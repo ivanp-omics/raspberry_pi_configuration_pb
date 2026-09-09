@@ -1,0 +1,19 @@
+# Kopirati u /etc/systemd/system/rpictl.service na Pi-ju
+#   sudo systemctl enable --now rpictl
+[Unit]
+Description=rpictl - upravljanje spremistem
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/rpictl
+ExecStart=/opt/rpictl/.venv/bin/python -m rpictl --config /opt/rpictl/config.yaml
+Restart=always
+RestartSec=5
+# Baza mora na zapisivi mount ako je root read-only overlay
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

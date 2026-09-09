@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spremište — nadzor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* Paleta je uzeta iz legende sheme ožičenja: crveno napajanje, plavi
+     signal, narančasti krug ventilatora, zeleni audio. */
+  :root{
+    --paper:#eef1f2;
+    --card:#ffffff;
+    --ink:#18232a;
+    --muted:#5e7079;
+    --line:#c9d3d7;
+    --fan:#e8853a;
+    --signal:#2f7fb5;
+    --audio:#2e9b57;
+    --alarm:#c0392b;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"IBM Plex Sans",-apple-system,Segoe UI,Roboto,sans-serif;
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:680px;margin:0 auto;padding:20px 16px 56px}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:18px}
+  header h1{font-size:19px;font-weight:600;margin:0;letter-spacing:-.01em}
+  .conn{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted)}
+  .conn b{font-weight:500;color:var(--audio)}
+  .conn.down b{color:var(--alarm)}
+
+  .panel{
+    background:var(--card);
+    border:2px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .panel h2{
+    font-size:13px;font-weight:600;margin:0 0 12px;color:var(--muted);
+  }
+
+  /* ---- glavni prikaz temperature ---- */
+  .readout{display:flex;align-items:flex-end;gap:14px}
+  .temp{
+    font-family:"IBM Plex Mono",monospace;
+    font-variant-numeric:tabular-nums;
+    font-size:64px;line-height:.9;font-weight:500;letter-spacing:-.03em;
+  }
+  .temp span{font-size:26px;color:var(--muted)}
+  .side{font-size:13px;color:var(--muted);padding-bottom:6px}
+  .side div{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+
+  /* ---- traka histereze ---- */
+  .band{margin-top:18px}
+  .track{
+    position:relative;height:26px;border:1px solid var(--line);
+    border-radius:4px;background:linear-gradient(90deg,#e7eef2,#fbf0e6);
+  }
+  .window{position:absolute;top:0;bottom:0;background:rgba(232,133,58,.18);
+    border-left:1px solid var(--fan);border-right:1px solid var(--fan)}
+  .marker{position:absolute;top:-5px;bottom:-5px;width:3px;background:var(--ink);
+    transition:left .4s ease}
+  .scale{display:flex;justify-content:space-between;margin-top:5px;
+    font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted)}
+
+  /* ---- ventilator ---- */
+  .fanrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .lamp{width:14px;height:14px;border-radius:50%;background:var(--line);flex:none}
+  .lamp.on{background:var(--fan);box-shadow:0 0 0 4px rgba(232,133,58,.2)}
+  .fanstate{font-weight:600}
+  .reason{color:var(--muted);font-size:13px;margin-top:8px}
+  .reason.bad{color:var(--alarm);font-weight:500}
+
+  .modes{display:flex;gap:0;margin-top:14px;border:1px solid var(--line);
+    border-radius:6px;overflow:hidden;width:100%}
+  .modes button{
+    flex:1;appearance:none;border:0;background:var(--card);color:var(--ink);
+    font-family:inherit;font-size:14px;padding:9px 4px;cursor:pointer;
+    border-right:1px solid var(--line);
+  }
+  .modes button:last-child{border-right:0}
+  .modes button:hover{background:#f4f7f8}
+  .modes button[aria-pressed="true"]{background:var(--ink);color:#fff}
+  .modes button:focus-visible{outline:2px solid var(--signal);outline-offset:-2px}
+
+  /* ---- graf ---- */
+  svg.spark{width:100%;height:120px;display:block}
+  .sparkempty{color:var(--muted);font-size:13px;padding:28px 0;text-align:center}
+
+  /* ---- razglas ---- */
+  .say{display:flex;gap:8px}
+  .say input{
+    flex:1;min-width:0;font-family:inherit;font-size:14px;padding:9px 10px;
+    border:1px solid var(--line);border-radius:6px;background:#fbfcfc;color:var(--ink);
+  }
+  .say input:focus{outline:2px solid var(--audio);outline-offset:-1px;border-color:var(--audio)}
+  button.go{
+    appearance:none;border:0;border-radius:6px;background:var(--audio);color:#fff;
+    font-family:inherit;font-size:14px;font-weight:500;padding:9px 16px;cursor:pointer;
+  }
+  button.go:hover{filter:brightness(.93)}
+  button.go:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  button.go.secondary{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+
+  /* ---- mreža ---- */
+  ul.hosts{list-style:none;margin:0;padding:0;font-family:"IBM Plex Mono",monospace;font-size:13px}
+  ul.hosts li{display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #eef2f3}
+  ul.hosts li:last-child{border-bottom:0}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--line);flex:none}
+  .dot.up{background:var(--signal)}
+  .hname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-family:"IBM Plex Sans",sans-serif}
+  .hip{color:var(--muted)}
+  .offline .hname,.offline .hip{color:var(--muted);text-decoration:line-through}
+
+  /* ---- kvarovi ---- */
+  .faults{display:flex;flex-wrap:wrap;gap:8px}
+  .faults button{
+    appearance:none;font-family:inherit;font-size:13px;padding:7px 12px;cursor:pointer;
+    border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);
+  }
+  .faults button[aria-pressed="true"]{background:var(--alarm);border-color:var(--alarm);color:#fff}
+  .faults button:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+  .hint{font-size:13px;color:var(--muted);margin:10px 0 0}
+
+  footer{font-size:12px;color:var(--muted);text-align:center;margin-top:22px;
+    font-family:"IBM Plex Mono",monospace}
+
+  @media (prefers-reduced-motion:reduce){.marker{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Spremište</h1>
+    <div class="conn" id="conn">veza <b>spajanje…</b></div>
+  </header>
+
+  <section class="panel">
+    <div class="readout">
+      <div class="temp" id="temp">--<span>&nbsp;°C</span></div>
+      <div class="side">
+        <div id="hum">vlaga --</div>
+        <div id="age">očitanje --</div>
+      </div>
+    </div>
+
+    <div class="band">
+      <div class="track" id="track">
+        <div class="window" id="window"></div>
+        <div class="marker" id="marker" style="left:50%"></div>
+      </div>
+      <div class="scale"><span>15 °C</span><span id="thresholds">gasi -- / pali --</span><span>35 °C</span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Ventilacija</h2>
+    <div class="fanrow">
+      <span class="lamp" id="lamp"></span>
+      <span class="fanstate" id="fanstate">nepoznato</span>
+    </div>
+    <p class="reason" id="reason">čekam prvo očitanje</p>
+    <div class="modes" id="modes">
+      <button data-mode="auto" aria-pressed="false">Automatski</button>
+      <button data-mode="on" aria-pressed="false">Stalno uključen</button>
+      <button data-mode="off" aria-pressed="false">Isključen</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Zadnja 24 sata</h2>
+    <div id="sparkbox"><p class="sparkempty">Još nema dovoljno mjerenja.</p></div>
+  </section>
+
+  <section class="panel">
+    <h2>Razglas</h2>
+    <div class="say">
+      <input id="saytext" placeholder="Tekst najave" aria-label="Tekst najave">
+      <button class="go" id="saybtn">Najavi</button>
+    </div>
+    <p class="hint" id="saystate">Red je prazan.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Glazba</h2>
+    <div class="say">
+      <button class="go" id="musicplay">Pusti</button>
+      <button class="go secondary" id="musicstop">Zaustavi</button>
+    </div>
+    <p class="hint" id="musicstate">Zaustavljeno.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Mreža</h2>
+    <ul class="hosts" id="hosts"><li><span class="hname">Skeniranje…</span></li></ul>
+  </section>
+
+  <section class="panel" id="simpanel" hidden>
+    <h2>Simulirani kvarovi</h2>
+    <div class="faults" id="faults">
+      <button data-fault="freeze" aria-pressed="false">Zamrzni očitanje</button>
+      <button data-fault="error" aria-pressed="false">Kvar sabirnice</button>
+      <button data-fault="garbage" aria-pressed="false">Besmislena vrijednost</button>
+    </div>
+    <p class="hint">Uključi kvar i gledaj razlog ispod ventilatora. Svaki mora završiti s upaljenim ventilatorom.</p>
+  </section>
+
+  <footer id="foot">—</footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const T_MIN = 15, T_MAX = 35;
+let state = null;
+
+const pos = (c) => Math.max(0, Math.min(100, (c - T_MIN) / (T_MAX - T_MIN) * 100));
+
+function fmtAge(s){
+  if (s == null) return "očitanje --";
+  if (s < 90) return `očitanje prije ${Math.round(s)} s`;
+  return `očitanje prije ${Math.round(s/60)} min`;
+}
+
+function render(s){
+  state = s;
+  const c = s.climate;
+  const r = c.reading;
+
+  $("temp").innerHTML = (r ? r.temperature_c.toFixed(1) : "--") + "<span>&nbsp;°C</span>";
+  $("hum").textContent = r && r.humidity_pct != null ? `vlaga ${r.humidity_pct.toFixed(0)} %` : "vlaga --";
+  $("age").textContent = fmtAge(c.reading_age_s);
+
+  const on = c.thresholds.on_c, off = c.thresholds.off_c;
+  $("window").style.left = pos(off) + "%";
+  $("window").style.width = (pos(on) - pos(off)) + "%";
+  $("thresholds").textContent = `gasi ${off.toFixed(0)} / pali ${on.toFixed(0)}`;
+  if (r) $("marker").style.left = pos(r.temperature_c) + "%";
+
+  $("lamp").className = "lamp" + (c.fan_on ? " on" : "");
+  $("fanstate").textContent = c.fan_on ? "Radi" : "Ne radi";
+  const reason = $("reason");
+  reason.textContent = c.reason;
+  reason.className = "reason" + (c.healthy ? "" : " bad");
+
+  for (const b of $("modes").children)
+    b.setAttribute("aria-pressed", String(b.dataset.mode === c.mode));
+
+  const a = s.announcer;
+  $("saystate").textContent = a.playing
+    ? `Svira: ${a.playing}`
+    : (a.pending ? `${a.pending} u redu čekanja.` : "Red je prazan.");
+
+  const m = s.music;
+  $("musicstate").textContent =
+    m.status === "playing" ? `Svira: ${m.track}` :
+    m.status === "ducked" ? "Pauzirano (najava)" :
+    "Zaustavljeno.";
+
+  $("foot").textContent = s.simulate
+    ? `simulacija · vrijeme ×${s.sim_speed} · ${c.reads} očitanja, ${c.errors} grešaka, ${c.cycles} ciklusa`
+    : `uređaj · ${c.reads} očitanja, ${c.errors} grešaka, ${c.cycles} ciklusa`;
+
+  $("simpanel").hidden = !s.simulate;
+}
+
+function drawSpark(rows){
+  const box = $("sparkbox");
+  if (!rows || rows.length < 2){
+    box.innerHTML = '<p class="sparkempty">Još nema dovoljno mjerenja.</p>';
+    return;
+  }
+  const W = 640, H = 120, P = 8;
+  const ts = rows.map(r => r.ts), tv = rows.map(r => r.temperature_c);
+  const t0 = Math.min(...ts), t1 = Math.max(...ts);
+  const lo = Math.min(...tv) - 0.5, hi = Math.max(...tv) + 0.5;
+  const x = t => P + (t - t0) / ((t1 - t0) || 1) * (W - 2*P);
+  const y = v => H - P - (v - lo) / ((hi - lo) || 1) * (H - 2*P);
+  const pts = rows.map(r => `${x(r.ts).toFixed(1)},${y(r.temperature_c).toFixed(1)}`).join(" ");
+
+  const th = state ? state.climate.thresholds : null;
+  const bands = th && th.on_c <= hi && th.off_c >= lo
+    ? `<rect x="${P}" y="${y(th.on_c).toFixed(1)}" width="${W-2*P}"
+        height="${Math.max(0,(y(th.off_c)-y(th.on_c))).toFixed(1)}"
+        fill="rgba(232,133,58,.14)"></rect>` : "";
+
+  box.innerHTML = `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
+      role="img" aria-label="Temperatura kroz vrijeme">
+      ${bands}
+      <polyline points="${pts}" fill="none" stroke="#2f7fb5" stroke-width="2"
+        stroke-linejoin="round" stroke-linecap="round"></polyline>
+    </svg>
+    <div class="scale"><span>${lo.toFixed(1)} °C – ${hi.toFixed(1)} °C</span><span>${rows.length} točaka</span></div>`;
+}
+
+function drawHosts(d){
+  const ul = $("hosts");
+  if (!d.hosts.length){ ul.innerHTML = '<li><span class="hname">Nema uređaja.</span></li>'; return; }
+  ul.innerHTML = d.hosts.map(h => `
+    <li class="${h.online ? "" : "offline"}">
+      <span class="dot ${h.online ? "up" : ""}"></span>
+      <span class="hname">${h.hostname || "nepoznat uređaj"}</span>
+      <span class="hip">${h.ip}</span>
+    </li>`).join("");
+}
+
+async function post(url, body){
+  const res = await fetch(url, {
+    method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+$("modes").addEventListener("click", async (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  render(Object.assign({}, state, {climate: await post("/api/fan", {mode:b.dataset.mode})}));
+});
+
+async function sendSay(){
+  const t = $("saytext").value.trim();
+  if (!t) { $("saytext").focus(); return; }
+  await post("/api/announce", {text:t});
+  $("saytext").value = "";
+}
+$("saybtn").addEventListener("click", sendSay);
+$("saytext").addEventListener("keydown", e => { if (e.key === "Enter") sendSay(); });
+
+$("musicplay").addEventListener("click", async () => {
+  render(Object.assign({}, state, {music: await post("/api/music", {action:"play"})}));
+});
+$("musicstop").addEventListener("click", async () => {
+  render(Object.assign({}, state, {music: await post("/api/music", {action:"stop"})}));
+});
+
+$("faults").addEventListener("click", async (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const next = b.getAttribute("aria-pressed") !== "true";
+  const out = await post("/api/sim/fault", {[b.dataset.fault]: next});
+  for (const btn of $("faults").children)
+    btn.setAttribute("aria-pressed", String(!!out[btn.dataset.fault]));
+});
+
+async function refresh(){
+  const [s, h, n] = await Promise.all([
+    fetch("/api/status").then(r => r.json()),
+    fetch("/api/history?hours=24").then(r => r.json()),
+    fetch("/api/network").then(r => r.json()),
+  ]);
+  render(s); drawSpark(h); drawHosts(n);
+}
+
+function connect(){
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const sock = new WebSocket(`${proto}://${location.host}/ws`);
+  sock.onopen = () => { $("conn").className = "conn"; $("conn").innerHTML = "veza <b>uspostavljena</b>"; };
+  sock.onclose = () => {
+    $("conn").className = "conn down";
+    $("conn").innerHTML = "veza <b>prekinuta</b>";
+    setTimeout(connect, 3000);
+  };
+  // U simulaciji ocitanja stizu i po dva puta u sekundi, pa ne povlacimo
+  // cijeli status za svako - samo osvjezimo broj, a puni refresh prigusimo.
+  let lastRefresh = 0;
+  const throttled = () => {
+    const now = Date.now();
+    if (now - lastRefresh < 2000) return;
+    lastRefresh = now;
+    refresh().catch(() => {});
+  };
+  sock.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.type === "status") { render(m.data); return; }
+    if (m.type === "reading" && state){
+      state.climate.reading = m.data;
+      state.climate.reading_age_s = 0;
+      render(state);
+      return;
+    }
+    throttled();
+  };
+}
+
+refresh().catch(() => {});
+connect();
+setInterval(() => refresh().catch(() => {}), 15000);
+</script>
+</body>
+</html>

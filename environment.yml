@@ -1,0 +1,18 @@
+# conda env create -f environment.yml
+# conda activate rpictl
+name: rpictl
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - fastapi
+  - uvicorn
+  - pydantic>=2
+  - pyyaml
+  - pytest
+  - httpx
+  - pip:
+      - pytest-asyncio
+      - "uvicorn[standard]"
+      - ruff

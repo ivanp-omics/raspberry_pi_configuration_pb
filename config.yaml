@@ -1,0 +1,65 @@
+# ---------------------------------------------------------------------------
+# rpictl - konfiguracija
+#
+# simulate: true   -> lazni hardver, radi na Windows/Mac/Linux desktopu
+# simulate: false  -> pravi BME680, GPIO relej, ALSA audio (samo na Raspberry Pi)
+# ---------------------------------------------------------------------------
+
+simulate: true
+
+# Ubrzanje vremena. 1.0 = stvarno vrijeme. 60.0 = jedna simulirana minuta
+# traje jednu stvarnu sekundu, pa 24 h vidis u 24 minute.
+# Na Pi-ju OBAVEZNO 1.0.
+sim_speed: 60.0
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+
+climate:
+  poll_interval_s: 30       # koliko cesto citamo senzor (simulirane sekunde)
+  temp_on_c: 26.0           # iznad ovoga ventilator pali
+  temp_off_c: 24.0          # ispod ovoga gasi  (razlika = histereza)
+  min_on_s: 180             # kad se upali, mora raditi barem toliko
+  min_off_s: 180            # kad se ugasi, mora mirovati barem toliko
+  stale_after_s: 300        # nema svjezeg ocitanja toliko -> fail-safe
+  valid_min_c: -20.0        # izvan ovog raspona ocitanje se odbacuje
+  valid_max_c: 80.0
+
+sensor:
+  i2c_address: 0x76         # BME680: 0x76 ili 0x77
+  sim:
+    start_c: 23.0
+    outdoor_mean_c: 21.0    # srednja vanjska temperatura
+    outdoor_amp_c: 6.0      # dnevna amplituda (min ~05h, max ~15h)
+    k_env: 0.020            # brzina izjednacavanja s vanjskom, po sim-minuti
+    solar_gain_c: 0.030     # dobitak topline danju, po sim-minuti
+    fan_cooling_c: 0.110    # hladenje dok ventilator radi, po sim-minuti
+    noise_c: 0.15           # sum senzora (std. devijacija)
+
+fan:
+  gpio_pin: 17
+  # Relej modul: vecina jeftinih opto modula je active-low.
+  relay_active_high: false
+  # Tvoja shema koristi COM-NC: ventilator radi kad relej NIJE pobuden.
+  fan_runs_when_energised: false
+
+audio:
+  media_dir: "media"
+  player_cmd: ["aplay", "-q"]
+  tts_cmd: ["espeak-ng", "-v", "hr", "-s", "150"]
+  sim_speak_rate_wps: 2.5   # koliko rijeci u sekundi "govori" lazni player
+
+music:
+  media_dir: "media/music"
+  player_cmd: ["mpv", "--no-video", "--idle=yes", "--really-quiet"]
+  ipc_socket: "/tmp/rpictl-mpv.sock"
+
+network:
+  scan_interval_s: 300
+  subnet: "192.168.1.0/24"
+  method: "arp"             # arp | nmap
+
+telemetry:
+  db_path: "data/rpictl.sqlite"
+  retention_days: 30

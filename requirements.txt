@@ -1,0 +1,17 @@
+# --- radi svugdje (desktop i Pi) ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+PyYAML>=6.0
+
+# --- razvoj ---
+pytest>=8.0
+pytest-asyncio>=0.23
+httpx>=0.27
+ruff>=0.5
+
+# --- SAMO na Raspberry Pi, ne instalirati na desktopu ---
+# gpiozero>=2.0
+# RPi.GPIO>=0.7
+# smbus2>=0.4
+# bme680>=1.1
