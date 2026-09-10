@@ -16,6 +16,10 @@ from pydantic import BaseModel, Field, model_validator
 class ServerConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
+    # None = bez provjere (lokalni rad, simulacija, Tailscale-only pristup).
+    # Postavi kad API treba biti dohvatljiv i izvan tailneta (npr. preko
+    # Tailscale Funnela za WordPress bridge) - tad postaje jedina brava.
+    api_token: str | None = None
 
 
 class ClimateConfig(BaseModel):

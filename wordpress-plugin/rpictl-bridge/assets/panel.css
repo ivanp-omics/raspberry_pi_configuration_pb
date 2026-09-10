@@ -1,0 +1,64 @@
+/* rpictl Bridge - namjerno oskudan stil, skopiran unutar .rpictl-panel da se
+   ne kosi ni s jednom postojecom stranicom (Elementor/Hello Elementor). */
+.rpictl-panel {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  max-width: 480px;
+  color: #18232a;
+}
+.rpictl-panel .rpictl-row {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #c9d3d7;
+  border-radius: 8px;
+}
+.rpictl-panel .rpictl-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.rpictl-panel .rpictl-buttons button {
+  flex: 1;
+  padding: 8px 4px;
+  border: 1px solid #c9d3d7;
+  border-radius: 6px;
+  background: #fff;
+  color: #18232a;
+  cursor: pointer;
+  font-size: 14px;
+}
+.rpictl-panel .rpictl-buttons button:hover:not(:disabled) {
+  background: #f4f7f8;
+}
+.rpictl-panel .rpictl-buttons button:disabled {
+  background: #18232a;
+  color: #fff;
+  cursor: default;
+}
+.rpictl-panel .rpictl-say {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.rpictl-panel .rpictl-say input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #c9d3d7;
+  border-radius: 6px;
+}
+.rpictl-panel .rpictl-say button {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 6px;
+  background: #2e9b57;
+  color: #fff;
+  cursor: pointer;
+}
+.rpictl-panel .rpictl-error {
+  color: #c0392b;
+  font-weight: 500;
+}
+.rpictl-denied {
+  color: #5e7079;
+  font-style: italic;
+}

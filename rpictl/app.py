@@ -12,7 +12,14 @@ import logging
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -131,9 +138,21 @@ def create_app(config_path: str = "config.yaml") -> FastAPI:
     def rt() -> Runtime:
         return app.state.rt
 
+    async def require_token(x_api_key: str | None = Header(default=None)) -> None:
+        """Provjera dijeljenog tokena - vidi ServerConfig.api_token.
+
+        None (default) znaci da API nema svoju bravu, jer je dosad jedina
+        brava bila Tailscale mreza sama. Kad je token postavljen (npr. za
+        Tailscale Funnel/WordPress bridge), postaje jedina zastita jer API
+        tad postaje dohvatljiv i izvan tailneta.
+        """
+        token = rt().cfg.server.api_token
+        if token and x_api_key != token:
+            raise HTTPException(status_code=401, detail="neispravan ili nedostajuci token")
+
     # -- citanje ------------------------------------------------------------
 
-    @app.get("/api/status")
+    @app.get("/api/status", dependencies=[Depends(require_token)])
     async def status() -> dict:
         return rt().status()
 
@@ -145,22 +164,22 @@ def create_app(config_path: str = "config.yaml") -> FastAPI:
             {"ok": ok, "reason": s["reason"]}, status_code=200 if ok else 503
         )
 
-    @app.get("/api/history")
+    @app.get("/api/history", dependencies=[Depends(require_token)])
     async def history(hours: float = 24.0, limit: int = 500) -> list[dict]:
         return await rt().telemetry.history(hours=hours, limit=limit)
 
-    @app.get("/api/network")
+    @app.get("/api/network", dependencies=[Depends(require_token)])
     async def network() -> dict:
         return rt().inventory.snapshot()
 
     # -- upravljanje --------------------------------------------------------
 
-    @app.post("/api/fan")
+    @app.post("/api/fan", dependencies=[Depends(require_token)])
     async def set_fan(req: FanRequest) -> dict:
         await rt().climate.set_mode(req.mode)
         return rt().climate.snapshot()
 
-    @app.post("/api/announce")
+    @app.post("/api/announce", dependencies=[Depends(require_token)])
     async def announce(req: AnnounceRequest) -> dict:
         try:
             ann = rt().announcer.enqueue(
@@ -170,7 +189,7 @@ def create_app(config_path: str = "config.yaml") -> FastAPI:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {"id": ann.id, "pending": rt().announcer.pending}
 
-    @app.post("/api/music")
+    @app.post("/api/music", dependencies=[Depends(require_token)])
     async def music(req: MusicRequest) -> dict:
         if req.action == "play":
             await rt().music.play(req.track)
@@ -180,14 +199,14 @@ def create_app(config_path: str = "config.yaml") -> FastAPI:
 
     # -- ubrizgavanje kvarova (samo u simulaciji) ---------------------------
 
-    @app.get("/api/sim/fault")
+    @app.get("/api/sim/fault", dependencies=[Depends(require_token)])
     async def get_fault() -> dict:
         sensor = rt().hal.sensor
         if not hasattr(sensor, "fault"):
             raise HTTPException(status_code=404, detail="dostupno samo u simulaciji")
         return {**sensor.fault.to_dict(), "model_room_c": round(sensor.room_c, 2)}
 
-    @app.post("/api/sim/fault")
+    @app.post("/api/sim/fault", dependencies=[Depends(require_token)])
     async def set_fault(req: FaultRequest) -> dict:
         sensor = rt().hal.sensor
         if not hasattr(sensor, "fault"):

@@ -15,6 +15,10 @@ sim_speed: 60.0
 server:
   host: "127.0.0.1"
   port: 8000
+  # Postavi samo ako je API dohvatljiv izvan tailneta (npr. Tailscale Funnel
+  # za WordPress bridge) - tad postaje jedina brava. Generiraj s:
+  # openssl rand -hex 32
+  # api_token: "<isti string ide i u WordPress plugin postavke>"
 
 climate:
   poll_interval_s: 30       # koliko cesto citamo senzor (simulirane sekunde)

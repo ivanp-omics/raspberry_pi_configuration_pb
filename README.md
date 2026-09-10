@@ -219,6 +219,11 @@ POST /api/sim/fault  {"freeze": true}     samo u simulaciji
 WS   /ws                          događaji uživo
 ```
 
+Ako je `server.api_token` postavljen u `config.yaml`, svaka `/api/*` ruta
+(osim `/api/health`) traži header `X-Api-Key: <token>`, inače vraća 401. Bez
+postavljenog tokena (default) ponašanje je identično kao prije — Tailscale
+mreža je jedina brava. Vidi "Daljinski pristup preko WordPressa" niže.
+
 ## Prelazak na Raspberry Pi
 
 1. `simulate: false` i `sim_speed: 1.0` u `config.yaml`
@@ -252,6 +257,59 @@ je u **`tailscale_Readme.md`** (uloge ADMIN / INSTALATER / KORISNIK) — ovo je
 samo dio koji se nadovezuje na to, specifično za **web sučelje rpictl-a** na
 portu 8000 (za razliku od SSH pristupa uređaju, koji je posve odvojena stvar).
 
+### Kako Tailscale i SSH zapravo rade "iza scene"
+
+Ovo dvoje rješava dva **različita** problema i uopće se ne poznaju — vrijedi
+razumjeti prije ostatka ove sekcije, jer se svaki korak u `tailscale_Readme.md`
+oslanja na ovaj mehanizam bez da ga ponovno objašnjava.
+
+**Tailscale = privatna cesta.** Pi u spremištu sjedi iza običnog routera koji
+po defaultu blokira sve dolazne veze — bez Tailscalea, tvoje računalo (u
+drugom gradu) nema kako doći do njega. Tailscale instalira pozadinski program
+(ikona u system trayu, radi neprestano) koji spoji oba uređaja u jednu
+privatnu virtualnu mrežu: svaki dobije stabilnu adresu (`100.x.y.z`) i ime
+(`spremiste`), a Tailscale sam "prokopa" put kroz routere/firewalle koji bi
+inače blokirali vezu. Ta sposobnost — da sam zna razriješiti ime u pravu
+adresu — zove se **MagicDNS**: pozadinski program tvom računalu tiho govori
+"kad god netko pita za ime `spremiste`, ja znam odgovor".
+
+**SSH = sama radnja na vratima, kad si već stigao.** SSH je ugrađen u Windows
+(radi identično iz PowerShella, cmd-a, ili terminala unutar VS Codea — sva
+tri pokreću isti `ssh.exe`) i ne zna ništa o Tailscaleu — treba mu samo ime
+ili adresa. Kad upišeš `ssh ivan@spremiste`:
+1. `ssh` pita Windows "gdje je `spremiste`?"
+2. Windows to prosljeđuje Tailscaleu (jer se on registrirao kao MagicDNS)
+3. Tailscale vrati pravu adresu i provede vezu kroz svoj privatni tunel
+4. `ssh`, preko te veze, provjeri tvoj privatni ključ (iz `C:\Users\<ti>\.ssh\`)
+   protiv javnog ključa u `authorized_keys` na uređaju — poklapa se, pusti te
+   unutra bez lozinke
+
+Dakle Tailscale = "kako doći do vrata", SSH = "kako se vrata otključavaju".
+Da Tailscale nije pokrenut (ugašena ikona u trayu), `ssh ivan@spremiste` ne
+zna što je `spremiste` — točno greška `Could not resolve hostname` iz
+tablice u `tailscale_Readme.md`.
+
+**Kako se Pi uopće prvi put pridružio toj mreži** (DIO 1–2 u
+`tailscale_Readme.md`): slika diska je unaprijed pripremljena (cloud-init
+`user-data`) s ADMIN-ovim SSH javnim ključem i jednokratnim Tailscale auth
+key-em već ugrađenima — Pi OS *Lite* nema ekran/browser za normalnu prijavu,
+pa se pri prvom paljenju sam, automatski prijavi na tailnet tim auth key-em.
+ADMIN se, odvojeno, na svom računalu ranije prijavio normalno (interaktivno,
+kroz browser) — to je drugačiji mehanizam od onog kojim se Pi prijavio. Čim
+se Pi pridruži, oba uređaja se vide u `tailscale status`, i `ssh ivan@spremiste`
+radi. Odmah zatim (Korak 2.3) se auth key **revocira** (više ne treba, jer je
+Pi sad trajno prepoznat po vlastitom identitetu) i isključuje se "key expiry"
+(inače bi uređaj nakon ~180 dana tiho ispao s mreže, a nema ekran da se sam
+ponovno potvrdi).
+
+**Zašto onda WordPress bridge treba Tailscale Funnel, a ne samo obični
+Tailscale:** WordPress hosting nije član tvog tailneta (tuđi je server) — pa
+mu obična privatna cesta ne pomaže, ne može ući. Funnel je poseban Tailscale
+način da **jedna, konkretna stvar** (Pi-jev port 8000) postane dostupna i s
+običnog javnog interneta, dok SSH i sve ostalo na Pi-ju ostaje skriveno iza
+privatne mreže kao i prije — zato ta dva puta (SSH-only tailnet i WordPress
+bridge preko Funnela) rade potpuno neovisno jedan o drugom.
+
 `server.host` u `config.yaml` mora biti `0.0.0.0` (ne `127.0.0.1`) da bi server
 uopće slušao na mreži. Uređaj je spojen i na obični Ethernet (ne samo
 Tailscale) — ako ne želiš da razglas/ventilacija budu dohvatljivi i s te LAN
@@ -268,15 +326,40 @@ razglasu, glazbi i ventilaciji.
 
 Bitna razlika od SSH-a: SSH traži i "Vrata 2" (KORISNIKOV javni ključ ručno
 dodan u `~/.ssh/authorized_keys` na uređaju, DIO 3 koraci 3.6–3.7) prije nego
-itko uđe u shell. Web sučelje rpictl-a tu drugu prepreku **nema** — nema
-prijave, tokena ni računa u samoj aplikaciji (namjerna odluka, vidi
-`services/announcer.py`/`app.py` — nula auth koda). Znači: čim je netko
-Share-an na `spremiste` (Vrata 1), odmah upravlja ventilatorom i razglasom
-bez ikakvog drugog odobrenja — to je jedina stvarna "brava" ovdje, pa je Share
-listu vrijedno povremeno pregledati (`login.tailscale.com` → Machines →
+itko uđe u shell. Web sučelje rpictl-a na tailnetu tu drugu prepreku **nema**
+— dok je `server.api_token` prazan (default), Tailscale mreža je jedina
+brava. Znači: čim je netko Share-an na `spremiste` (Vrata 1), odmah upravlja
+ventilatorom i razglasom bez ikakvog drugog odobrenja — pa je Share listu
+vrijedno povremeno pregledati (`login.tailscale.com` → Machines →
 `spremiste` → **Unshare** oduzima pristup odmah, bez čekanja).
 
 Tailscale **auth key** (`Settings → Keys`) iz vlastite konzole nije mehanizam
 za dodavanje ljudi naknadno — koristi se jednom, ugrađen u sliku diska pri
 prvom podizanju uređaja (DIO 2, korak 2.3 ga odmah revocira jer više ne
 treba). Za ljude koji dolaze poslije koristi se Share (gore), ne authkey.
+
+## Daljinski pristup preko WordPressa (bridge)
+
+Treći put pristupa, uz SSH (tailnet-only) i izravno web sučelje (tailnet
+preko Share-a) iznad — namijenjen ljudima kojima ne treba Tailscale uopće,
+samo prijava na postojeću WordPress stranicu. Potpuno odvojen, dodatan put —
+ništa od gore navedenog se ne mijenja ni gasi.
+
+Kratko: WordPress plugin (`wordpress-plugin/rpictl-bridge/`) provjerava
+WordPress prijavu i ulogu, pa server-to-server (PHP → Pi, nikad izravno iz
+browsera) prosljeđuje naredbe Pi-ju preko **Tailscale Funnela** (javni HTTPS
+URL koji Tailscale daje jednom uređaju, bez port-forwardinga na routeru) i
+tokena postavljenog u `server.api_token`. Pi mora imati taj token postavljen
+— inače je Funnel otvorena rupa bez ikakve zaštite.
+
+Postavljanje na Pi-ju:
+```bash
+# u config.yaml:
+# server:
+#   api_token: "<openssl rand -hex 32>"
+sudo systemctl restart rpictl
+sudo tailscale funnel 8000
+```
+
+Puni koraci (WordPress strana, FTP upload, dodjela pristupa ljudima) su u
+`wordpress-plugin/rpictl-bridge/README.md`.
