@@ -5,3 +5,6 @@ __pycache__/
 data/*.sqlite
 data/*.sqlite-journal
 .venv/
+
+# Zapakirani plugin za WordPress - artefakt koji zastari cim se plugin dirne.
+wordpress-plugin/*.zip

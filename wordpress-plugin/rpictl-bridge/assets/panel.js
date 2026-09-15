@@ -49,8 +49,22 @@
       opts.headers["Content-Type"] = "application/json";
     }
     const res = await fetch(cfg.restUrl + path, opts);
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      const err = new Error((body && body.message) || "Spremište trenutno nije dostupno.");
+      err.status = res.status;
+      throw err;
+    }
     return res.json();
+  }
+
+  function showError(e) {
+    const el = $("rpictl-error");
+    el.hidden = false;
+    // Istekao nonce (WordPress ga pusta 12-24 h) inace izgleda kao kvar Pi-ja.
+    el.textContent = e.status === 403
+      ? "Sesija je istekla — osvježi stranicu (F5)."
+      : e.message;
   }
 
   function render(s) {
@@ -83,53 +97,85 @@
     $("rpictl-error").hidden = true;
   }
 
+  const MIN_DELAY = 5000, MAX_DELAY = 60000;
+  let delay = MIN_DELAY;
+  let timer = null;
+
   async function refresh() {
     try {
       render(await call("/status", { method: "GET" }));
+      delay = MIN_DELAY;
     } catch (e) {
-      $("rpictl-error").hidden = false;
-      $("rpictl-error").textContent = "Spremište trenutno nije dostupno.";
+      showError(e);
+      delay = Math.min(delay * 2, MAX_DELAY);
     }
   }
 
-  $("rpictl-fan-buttons").addEventListener("click", async (e) => {
+  // Svaki zahtjev zauzme jednog PHP radnika na hostingu dok traje, pa se pri
+  // greskama razmak udvostrucuje, a u nevidljivoj kartici se ne salje nista.
+  function schedule(ms) {
+    clearTimeout(timer);
+    timer = setTimeout(tick, ms === undefined ? delay : ms);
+  }
+
+  async function tick() {
+    if (document.hidden) { schedule(MIN_DELAY); return; }
+    await refresh();
+    schedule();
+  }
+
+  // Klik koji ne uspije mora se vidjeti - inace korisnik ne zna je li naredba
+  // uopce stigla do ventilacije.
+  async function action(fn) {
+    try {
+      await fn();
+      $("rpictl-error").hidden = true;
+      await refresh();
+      schedule();
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  $("rpictl-fan-buttons").addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    await call("/fan", {
+    action(() => call("/fan", {
       method: "POST",
       body: JSON.stringify({ mode: b.dataset.mode }),
-    });
-    refresh();
+    }));
   });
 
-  $("rpictl-saybtn").addEventListener("click", async () => {
+  $("rpictl-saybtn").addEventListener("click", () => {
     const input = $("rpictl-saytext");
     const t = input.value.trim();
     if (!t) return;
-    await call("/announce", {
-      method: "POST",
-      body: JSON.stringify({ text: t }),
+    action(async () => {
+      await call("/announce", {
+        method: "POST",
+        body: JSON.stringify({ text: t }),
+      });
+      input.value = "";
     });
-    input.value = "";
-    refresh();
   });
 
-  $("rpictl-music-play").addEventListener("click", async () => {
-    await call("/music", {
+  $("rpictl-music-play").addEventListener("click", () => {
+    action(() => call("/music", {
       method: "POST",
       body: JSON.stringify({ action: "play" }),
-    });
-    refresh();
+    }));
   });
 
-  $("rpictl-music-stop").addEventListener("click", async () => {
-    await call("/music", {
+  $("rpictl-music-stop").addEventListener("click", () => {
+    action(() => call("/music", {
       method: "POST",
       body: JSON.stringify({ action: "stop" }),
-    });
-    refresh();
+    }));
   });
 
-  refresh();
-  setInterval(refresh, 5000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) { delay = MIN_DELAY; schedule(0); }
+  });
+
+  refresh().then(() => schedule());
 })();

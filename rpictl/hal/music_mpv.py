@@ -18,12 +18,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import random
 from pathlib import Path
 
 from ..config import MusicConfig
 
 log = logging.getLogger(__name__)
+
+
+def is_stream(track: str) -> bool:
+    """Internetski radio ili bilo koji URL koji mpv zna dohvatiti."""
+    return track.startswith(("http://", "https://"))
 
 
 class MpvMusicPlayer:
@@ -84,15 +88,22 @@ class MpvMusicPlayer:
     async def play(self, track: str | None = None) -> None:
         await self._ensure_started()
         media_dir = Path(self._cfg.media_dir)
-        target = media_dir / track if track else media_dir
-        if not target.exists():
-            log.error("nema glazbe: %s", target)
-            return
-        await self._send(["loadfile", str(target), "replace"])
+
+        if track and is_stream(track):
+            target = track  # mpv sam dohvaca stream, nista ne provjeravamo na disku
+        else:
+            # Path(track).name rezuje sve sto lici na putanju. Bez toga
+            # apsolutna putanja pregazi media_dir (pathlib: "a" / "/etc/x"
+            # je "/etc/x") i mpv dobije bilo koju datoteku na uredaju.
+            p = media_dir / Path(track).name if track else media_dir
+            if not p.exists():
+                log.error("nema glazbe: %s", p)
+                return
+            target = str(p)
+
+        await self._send(["loadfile", target, "replace"])
         if track is None:
             await self._send(["set_property", "shuffle", True])
-            files = [p for p in media_dir.iterdir() if p.is_file()]
-            random.shuffle(files)
         await self._send(["set_property", "loop-playlist", "inf"])
         self._track = track
         self._playing = True

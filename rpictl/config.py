@@ -24,8 +24,8 @@ class ServerConfig(BaseModel):
 
 class ClimateConfig(BaseModel):
     poll_interval_s: float = 30.0
-    temp_on_c: float = 26.0
-    temp_off_c: float = 24.0
+    temp_on_c: float = 35.0
+    temp_off_c: float = 32.0
     min_on_s: float = 180.0
     min_off_s: float = 180.0
     stale_after_s: float = 300.0

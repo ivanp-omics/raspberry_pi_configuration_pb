@@ -1,17 +1,21 @@
-# --- radi svugdje (desktop i Pi) ---
+# Runtime - ovo i samo ovo treba da rpictl radi, na desktopu i na Pi-ju.
+# provision-rpictl.sh instalira upravo ovu datoteku, pa se popisi ne mogu
+# razici. Za razvojne alate vidi requirements-dev.txt.
 fastapi>=0.115
 uvicorn[standard]>=0.30
 pydantic>=2.7
 PyYAML>=6.0
-
-# --- razvoj ---
-pytest>=8.0
-pytest-asyncio>=0.23
-httpx>=0.27
-ruff>=0.5
+python-multipart>=0.0.9   # upload datoteka za razglas i glazbu
 
 # --- SAMO na Raspberry Pi, ne instalirati na desktopu ---
-# gpiozero>=2.0
-# RPi.GPIO>=0.7
-# smbus2>=0.4
+#
+# Ne idu preko pipa nego preko apta, jer se na Pi-ju mucno kompajliraju:
+#   sudo apt install python3-gpiozero python3-lgpio python3-smbus2
+# Venv ih vidi samo ako je napravljen s --system-site-packages
+# (provision-rpictl.sh to radi).
+#
+# RPi.GPIO je namjerno izbacen: na Raspberry Pi OS Trixie vise ne radi,
+# gpiozero ondje koristi lgpio.
+#
+# Jedino ovo ide u venv preko pipa:
 # bme680>=1.1

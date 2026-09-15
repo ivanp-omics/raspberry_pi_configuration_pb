@@ -1,14 +1,17 @@
 """Pravi relej na GPIO.
 
 Ovdje i samo ovdje zivi prijevod "ventilator neka radi" -> "koji napon na pin".
-Kod tvoje sheme ventilator visi na COM-NC, dakle radi kad relej NIJE pobuden,
-a modul je vjerojatno active-low. To su dvije neovisne inverzije i lako je
-promasiti - zato su obje u konfiguraciji i obje na jednom mjestu.
+Dvije neovisne inverzije, obje iz konfiguracije: kakav je modul
+(`relay_active_high`) i kako je ventilator ozicen (`fan_runs_when_energised`).
+Obje se lako promase, pa se mjere multimetrom, ne pretpostavljaju.
 
-Napomena o bootu: GPIO17 je pri paljenju Pi-ja ulaz s pull-downom. Ovisno o
-modulu relej moze kratko privuci prije nego servis krene. Kod tebe je to
-bezopasno (ventilator se ugasi na par sekundi), ali initial_value postavljamo
-svjesno, ne slucajno.
+Na uredaju "spremiste" (izmjereno 12.9.2026): Joy-it modul je active-HIGH,
+ventilator na NC kontaktu -> pin LOW = relej otpusten = ventilator radi.
+
+Napomena o bootu: `config.txt` ima `gpio=17=op,dl`, pa firmware drzi pin LOW
+i ventilator radi kroz cijeli boot. Zato initial_value krece od "ventilator
+radi" - inace bi ga pokretanje servisa nakratko ugasilo, sto je nepotreban
+ciklus releja pri svakom restartu (a servis ima Restart=always).
 """
 
 from __future__ import annotations
@@ -29,17 +32,23 @@ class GpioRelayFan:
             from gpiozero import OutputDevice  # type: ignore
         except ImportError as exc:  # pragma: no cover - samo na Pi-ju
             raise RuntimeError(
-                "nedostaje gpiozero. Na Pi-ju: pip install gpiozero RPi.GPIO"
+                "nedostaje gpiozero. Na Pi-ju (Trixie): "
+                "sudo apt install python3-gpiozero python3-lgpio"
             ) from exc
 
         # active_high opisuje modul: kod active-low modula logicka jedinica
         # je nizak napon. gpiozero to preuzima na sebe.
+        #
+        # Krecemo od "ventilator radi": to je stanje u kojem firmware ostavi
+        # pin (gpio=17=op,dl) i stanje s kojim ThermostatPolicy krece, pa se
+        # pri pokretanju servisa relej uopce ne pomakne. Prvi tick odmah
+        # nakon toga donese pravu odluku na temelju ocitanja.
         self._dev = OutputDevice(
             cfg.gpio_pin,
             active_high=cfg.relay_active_high,
-            initial_value=self._energised_for(False),
+            initial_value=self._energised_for(True),
         )
-        self._on = False
+        self._on = True
         self.switch_count = 0
         self.last_change = clock.now()
         log.info(

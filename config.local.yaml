@@ -1,0 +1,51 @@
+# rpictl - spremiste, stvarni hardver. Vrijednosti provjerene 12 Sep 2026 (vidi complete_process.md).
+# Ovaj fajl JE trackan u gitu - to je namjerno, da se hardverske postavke prate kroz git povijest.
+# JEDINA iznimka je "api_token" ispod: to polje ostaje prazno u gitu. Na uredjaju,
+# preko SSH-a (ssh ivan@spremiste), rucno upisi pravu vrijednost (generiraj s
+# "openssl rand -hex 32") i tu liniju NIKAD ne commitaj natrag.
+# Za povratak na simulaciju radi testiranja: simulate: true, sim_speed: 60.0
+simulate: false
+sim_speed: 1.0
+
+server:
+  host: "0.0.0.0"          # dohvatljivo s LAN-a i Ivanovog tailneta
+  port: 8000
+  api_token: ""            # UPISI RUCNO preko SSH-a - ne commitaj pravu vrijednost!
+
+climate:
+  poll_interval_s: 30
+  temp_on_c: 35.0          # terenski ispravljeno 13 Sep 2026 (26/24 je gonjao ventilator cijelo ljeto)
+  temp_off_c: 32.0
+  min_on_s: 180
+  min_off_s: 180
+  stale_after_s: 300
+  valid_min_c: -20.0
+  valid_max_c: 80.0
+
+sensor:
+  i2c_address: 0x76        # BME680 CJMCU-680, SDO->GND, CS->3V3
+
+fan:
+  gpio_pin: 17
+  relay_active_high: true  # Joy-it modul je ACTIVE-HIGH (izmjereno): HIGH = pod naponom = ventilator ugasen
+  fan_runs_when_energised: false   # ventilator na NC releju (fail-safe potvrdjen: radi kad je Pi iskopcan)
+
+# AUDIO POLITIKA: govor + alarmi uvijek 100 %, glazba tise. Mikser ostaje na 100 %.
+audio:
+  media_dir: "media"
+  player_cmd: ["aplay", "-q"]
+  tts_cmd: ["espeak-ng", "-v", "hr", "-s", "150", "-a", "150"]
+
+music:
+  media_dir: "media/music"
+  player_cmd: ["mpv", "--no-video", "--idle=yes", "--really-quiet", "--volume=40"]   # glasnoca glazbe: podesi ovaj broj
+  ipc_socket: "/tmp/rpictl-mpv.sock"
+
+network:
+  scan_interval_s: 300
+  subnet: "192.168.8.0/24"  # PB002 LAN
+  method: "arp"
+
+telemetry:
+  db_path: "data/rpictl.sqlite"
+  retention_days: 30

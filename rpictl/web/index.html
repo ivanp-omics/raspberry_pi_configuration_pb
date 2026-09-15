@@ -39,6 +39,19 @@
   .conn{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted)}
   .conn b{font-weight:500;color:var(--audio)}
   .conn.down b{color:var(--alarm)}
+  .connwrap{display:flex;align-items:center;gap:8px}
+  .tokenbtn{
+    appearance:none;border:1px solid var(--line);border-radius:6px;background:var(--card);
+    font-size:13px;line-height:1;padding:5px 7px;cursor:pointer;color:var(--ink);
+  }
+  .tokenbtn:hover{background:#f4f7f8}
+  .tokenbtn:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+  .tokenrow{display:flex;gap:8px;margin:-6px 0 18px}
+  .tokenrow input{
+    flex:1;min-width:0;font-family:"IBM Plex Mono",monospace;font-size:13px;
+    padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fbfcfc;color:var(--ink);
+  }
+  .tokenrow input:focus{outline:2px solid var(--signal);outline-offset:-1px;border-color:var(--signal)}
 
   .panel{
     background:var(--card);
@@ -146,8 +159,16 @@
 
   <header>
     <h1>Spremište</h1>
-    <div class="conn" id="conn">veza <b>spajanje…</b></div>
+    <div class="connwrap">
+      <div class="conn" id="conn">veza <b>spajanje…</b></div>
+      <button class="tokenbtn" id="tokenbtn" type="button" title="Postavi API token (X-Api-Key)">🔑</button>
+    </div>
   </header>
+
+  <div class="tokenrow" id="tokenrow" hidden>
+    <input type="text" id="tokeninput" placeholder="API token (X-Api-Key)" autocomplete="off" spellcheck="false">
+    <button class="go" id="tokensave" type="button">Spremi</button>
+  </div>
 
   <section class="panel">
     <div class="readout">
@@ -226,6 +247,57 @@
 const $ = (id) => document.getElementById(id);
 const T_MIN = 15, T_MAX = 35;
 let state = null;
+
+// Token se ovdje cuva samo u localStorage ovog browsera (nikad ne ide u
+// config.yaml niti ikamo preko mreze osim kao X-Api-Key header) - potrebno
+// tek kad je server.api_token postavljen (Tailscale Funnel/WordPress bridge).
+const TOKEN_KEY = "rpictl_api_token";
+function getToken(){
+  try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
+}
+function setToken(t){
+  try {
+    if (t) localStorage.setItem(TOKEN_KEY, t);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {}
+}
+function authHeaders(extra){
+  const h = Object.assign({}, extra);
+  const t = getToken();
+  if (t) h["X-Api-Key"] = t;
+  return h;
+}
+function toggleTokenRow(){
+  const row = $("tokenrow");
+  const willShow = row.hidden;
+  row.hidden = !willShow;
+  if (willShow) {
+    $("tokeninput").value = getToken();
+    $("tokeninput").focus();
+  }
+}
+function saveToken(){
+  setToken($("tokeninput").value.trim());
+  authFailed = false;
+  $("tokenrow").hidden = true;
+  refresh().catch(() => {});
+}
+
+let wsConnected = false;
+let authFailed = false;
+function renderConn(){
+  const el = $("conn");
+  if (authFailed) {
+    el.className = "conn down";
+    el.innerHTML = "veza <b>token odbijen</b>";
+  } else if (wsConnected) {
+    el.className = "conn";
+    el.innerHTML = "veza <b>uspostavljena</b>";
+  } else {
+    el.className = "conn down";
+    el.innerHTML = "veza <b>prekinuta</b>";
+  }
+}
 
 const pos = (c) => Math.max(0, Math.min(100, (c - T_MIN) / (T_MAX - T_MIN) * 100));
 
@@ -319,9 +391,14 @@ function drawHosts(d){
 
 async function post(url, body){
   const res = await fetch(url, {
-    method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)
+    method:"POST", headers:authHeaders({"Content-Type":"application/json"}), body:JSON.stringify(body)
   });
+  if (res.status === 401) {
+    authFailed = true; renderConn();
+    throw new Error("401 - neispravan ili nedostajuci token");
+  }
   if (!res.ok) throw new Error(await res.text());
+  authFailed = false; renderConn();
   return res.json();
 }
 
@@ -355,21 +432,34 @@ $("faults").addEventListener("click", async (e) => {
 });
 
 async function refresh(){
-  const [s, h, n] = await Promise.all([
-    fetch("/api/status").then(r => r.json()),
-    fetch("/api/history?hours=24").then(r => r.json()),
-    fetch("/api/network").then(r => r.json()),
+  const opts = { headers: authHeaders() };
+  const [sr, hr, nr] = await Promise.all([
+    fetch("/api/status", opts),
+    fetch("/api/history?hours=24", opts),
+    fetch("/api/network", opts),
   ]);
+  if (sr.status === 401 || hr.status === 401 || nr.status === 401) {
+    authFailed = true; renderConn();
+    throw new Error("401 - neispravan ili nedostajuci token");
+  }
+  authFailed = false; renderConn();
+  const [s, h, n] = await Promise.all([sr.json(), hr.json(), nr.json()]);
   render(s); drawSpark(h); drawHosts(n);
 }
 
 function connect(){
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const sock = new WebSocket(`${proto}://${location.host}/ws`);
-  sock.onopen = () => { $("conn").className = "conn"; $("conn").innerHTML = "veza <b>uspostavljena</b>"; };
+  // Token ide kao query parametar jer browser na WebSocket vezu ne moze
+  // staviti zaglavlje. Pri svakom reconnectu se cita nanovo, pa izmjena
+  // tokena kroz gumb proradi sama od sebe.
+  const t = getToken();
+  const sock = new WebSocket(
+    `${proto}://${location.host}/ws` + (t ? `?token=${encodeURIComponent(t)}` : "")
+  );
+  sock.onopen = () => { wsConnected = true; renderConn(); };
   sock.onclose = () => {
-    $("conn").className = "conn down";
-    $("conn").innerHTML = "veza <b>prekinuta</b>";
+    wsConnected = false;
+    renderConn();
     setTimeout(connect, 3000);
   };
   // U simulaciji ocitanja stizu i po dva puta u sekundi, pa ne povlacimo
@@ -393,6 +483,10 @@ function connect(){
     throttled();
   };
 }
+
+$("tokenbtn").addEventListener("click", toggleTokenRow);
+$("tokensave").addEventListener("click", saveToken);
+$("tokeninput").addEventListener("keydown", e => { if (e.key === "Enter") saveToken(); });
 
 refresh().catch(() => {});
 connect();

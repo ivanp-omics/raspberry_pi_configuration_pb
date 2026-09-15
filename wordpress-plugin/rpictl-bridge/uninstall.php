@@ -8,6 +8,11 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
     exit;
 }
 
+$admin = get_role('administrator');
+if ($admin) {
+    $admin->remove_cap('rpictl_operate');
+}
+
 remove_role('rpictl_operator');
 delete_option('rpictl_bridge_pi_url');
 delete_option('rpictl_bridge_api_token');

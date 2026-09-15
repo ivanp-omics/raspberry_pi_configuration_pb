@@ -28,6 +28,14 @@ register_activation_hook(__FILE__, function () {
         'read' => true,
         RPICTL_BRIDGE_CAP => true,
     ]);
+    // WordPress ne daje administratoru prilagodene sposobnosti sam od sebe.
+    // Bez ovoga ni onaj tko je plugin postavio ne vidi panel, a jedini nacin
+    // da si da pristup preko Users ekrana bio bi da promijeni vlastitu ulogu
+    // u rpictl_operator - cime bi ostao bez administratorskih prava.
+    $admin = get_role('administrator');
+    if ($admin) {
+        $admin->add_cap(RPICTL_BRIDGE_CAP);
+    }
 });
 
 function rpictl_bridge_can_operate(): bool {
@@ -70,7 +78,7 @@ function rpictl_bridge_settings_page(): void {
                 <tr>
                     <th><label for="rpictl_bridge_api_token">API token</label></th>
                     <td>
-                        <input type="text" id="rpictl_bridge_api_token" name="rpictl_bridge_api_token"
+                        <input type="password" id="rpictl_bridge_api_token" name="rpictl_bridge_api_token"
                             value="<?php echo esc_attr(get_option('rpictl_bridge_api_token', '')); ?>"
                             class="regular-text" placeholder="isti string kao server.api_token u config.yaml">
                     </td>
@@ -96,8 +104,11 @@ function rpictl_bridge_request(string $method, string $endpoint, ?array $body = 
     }
     $token = (string) get_option('rpictl_bridge_api_token', '');
     $url = rtrim($pi_url, '/') . $endpoint;
+    // Kratak timeout: svaki zahtjev drzi jednog PHP radnika zauzetim dok traje,
+    // a panel ih salje u petlji - dugi timeout na nedostupnom Pi-ju zna
+    // iscrpiti cijeli worker pool hostinga.
     $args = [
-        'timeout' => 8,
+        'timeout' => 5,
         'headers' => ['X-Api-Key' => $token],
     ];
 
@@ -114,6 +125,16 @@ function rpictl_bridge_request(string $method, string $endpoint, ?array $body = 
     }
 
     $code = wp_remote_retrieve_response_code($response);
+    if ($code === 401) {
+        // Bez ovoga se odbijen token u panelu vidi isto kao ugasen Pi, a token
+        // se upisuje rucno na dva mjesta pa je zamjena ta dva uzroka izgledna.
+        return new WP_Error(
+            'rpictl_bad_token',
+            'Pi je odbio token. Provjeri da je API token u Settings -> rpictl Bridge identican onome u server.api_token na Pi-ju.',
+            ['status' => 502]
+        );
+    }
+
     $data = json_decode(wp_remote_retrieve_body($response), true);
     return new WP_REST_Response($data, $code);
 }
@@ -168,8 +189,12 @@ add_shortcode('rpictl_panel', function () {
         return '<p class="rpictl-denied">Nemaš pristup ovoj kontroli.</p>';
     }
 
-    wp_enqueue_style('rpictl-bridge', plugins_url('assets/panel.css', __FILE__), [], '1.0.0');
-    wp_enqueue_script('rpictl-bridge', plugins_url('assets/panel.js', __FILE__), [], '1.0.0', true);
+    // Verzija iz vremena izmjene datoteke - fiksni string znaci da operateri
+    // nakon svakog uploada jos danima vrte staru verziju iz browser cachea.
+    $css = plugin_dir_path(__FILE__) . 'assets/panel.css';
+    $js = plugin_dir_path(__FILE__) . 'assets/panel.js';
+    wp_enqueue_style('rpictl-bridge', plugins_url('assets/panel.css', __FILE__), [], (string) (filemtime($css) ?: '1.0.0'));
+    wp_enqueue_script('rpictl-bridge', plugins_url('assets/panel.js', __FILE__), [], (string) (filemtime($js) ?: '1.0.0'), true);
     wp_localize_script('rpictl-bridge', 'rpictlBridge', [
         'restUrl' => esc_url_raw(rest_url(RPICTL_BRIDGE_NS)),
         'nonce' => wp_create_nonce('wp_rest'),

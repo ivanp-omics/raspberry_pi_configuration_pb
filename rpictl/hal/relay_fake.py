@@ -10,7 +10,9 @@ log = logging.getLogger(__name__)
 
 
 class FakeFan:
-    def __init__(self, clock: Clock, initial: bool = False) -> None:
+    # Default je "radi", isto kao pravi relej (vidi relay_gpio.py): i hardver
+    # i ThermostatPolicy krecu odatle, pa simulacija modelira isti start.
+    def __init__(self, clock: Clock, initial: bool = True) -> None:
         self._clock = clock
         self._on = initial
         self.switch_count = 0

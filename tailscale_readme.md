@@ -456,8 +456,8 @@ Lokalno:
 
 Na uređaju:
 
-    cd ~/storage-room && git pull
-    sudo systemctl restart storage-room
+    cd /opt/rpictl && git pull
+    sudo systemctl restart rpictl
 
 Daje povijest izmjena i mogućnost povratka unatrag. Na uređaju u drugom gradu
 to je bitna sigurnosna mreža.
@@ -499,24 +499,30 @@ Konfiguracija je u `user-data` na boot particiji (cloud-init) i u `config.txt`.
 |---|---|
 | `dtparam=i2c_arm=on` | I2C sabirnica za senzor |
 | `dtparam=audio=on` | 3.5 mm audio izlaz |
-| `gpio=17=op,dh` | GPIO17 na visoko **prije nego OS krene** |
+| `gpio=17=op,dl` | GPIO17 na nisko **prije nego OS krene** |
 
 Zadnji redak je sigurnosni. Ventilator radi kad relej **nije** pobuđen (spojen
-na NC kontakt). Bez ovog retka pin bi tijekom cijelog boota bio neodređen, a
-većina opto relejnih modula reagira na nisko — pa bi ventilator stajao pri
-svakom pokretanju i restartu.
+na NC kontakt). Bez ovog retka pin bi tijekom cijelog boota bio neodređen, pa
+bi ventilator neodređeno stajao ili radio pri svakom pokretanju i restartu.
 
-Ako se ispostavi da je modul obrnute logike, `dh` se mijenja u `dl`. Traži
-reboot.
+Smjer (`dl` ili `dh`) ovisi o modulu i **mjeri se, ne pretpostavlja**. Na
+uređaju `spremiste` izmjeren je Joy-it modul koji je active-**HIGH**: visoko =
+pobuđen = ventilator stoji, pa je ispravno `dl`. Kod active-low modula bilo bi
+`dh`. Promjena traži reboot.
 
 ## Iz `user-data`
 
 - korisnik `ivan` sa SSH ključem ADMINA, bez lozinke preko SSH-a
-- I2C sučelje preko `rpi:` modula
+- I2C sučelje preko `rpi:` modula — **shema je pogrešna** (`rpi: i2c: true`
+  umjesto `rpi: interfaces: i2c: true`), pa se tiho ignorira i `/dev/i2c-1`
+  ne nastane. Do popravka slike treba ručno:
+  `echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf`
 - osnovni paketi
 - ograničenje journald zapisa na 64 MB (čuva SD karticu)
 - hardverski watchdog — uređaj se sam resetira ako se objesi
-- swap isključen
+- pokušaj isključivanja swapa — **na Trixieju ne radi**: `dphys-swapfile`
+  jedinica ne postoji, pa naredba tiho prođe a ~900 MB swapa ostane aktivno
+  (provjereno na `spremiste`). Treba drugi način ako je cilj poštedjeti karticu.
 - Tailscale instaliran i prijavljen
 
 ## Poznata ograničenja
@@ -524,8 +530,9 @@ reboot.
 **Nema RTC baterije.** Bez interneta uređaj nakon nestanka struje ne zna koliko
 je sati. Rješava se NTP-om, što radi čim ima mrežu.
 
-**SD kartica je potrošni dio.** Journald je ograničen i swap isključen upravo
-zbog toga, ali kartica ostaje najslabija karika. Backup slike se isplati.
+**SD kartica je potrošni dio.** Journald je ograničen upravo zbog toga (swap
+je trebao biti isključen, ali nije — vidi gore), a kartica ostaje najslabija
+karika. Backup slike se isplati.
 
 **Nakon svake izmjene u `config.txt` prvo provjeriti da se uređaj vratio**,
 prije sljedeće izmjene. Uređaj je u drugom gradu — greška koja spriječi boot

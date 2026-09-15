@@ -1,5 +1,9 @@
 # Kopirati u /etc/systemd/system/rpictl.service na Pi-ju
 #   sudo systemctl enable --now rpictl
+#
+# NAPOMENA: pi-setup/provision-rpictl.sh generira ovu istu jedinicu sam, s
+# korisnikom pod kojim je pokrenut. Ova datoteka je referenca za rucnu
+# instalaciju - ako se mijenja jedno, mijenjaj i drugo.
 [Unit]
 Description=rpictl - upravljanje spremistem
 After=network-online.target
@@ -7,9 +11,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
+User=ivan
 WorkingDirectory=/opt/rpictl
-ExecStart=/opt/rpictl/.venv/bin/python -m rpictl --config /opt/rpictl/config.yaml
+ExecStart=/opt/rpictl/.venv/bin/python -m rpictl --config /opt/rpictl/config.local.yaml
 Restart=always
 RestartSec=5
 # Baza mora na zapisivi mount ako je root read-only overlay

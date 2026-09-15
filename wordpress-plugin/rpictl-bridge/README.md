@@ -20,7 +20,7 @@ wp-admin pristup. Koraci ispod su za tebe.
    ```
    Isti string ide na dva mjesta u koraku 2 i 6 — mora biti identičan.
 
-2. **Na Pi-ju**, u `config.yaml`:
+2. **Na Pi-ju**, preko SSH-a, ručno u `config.local.yaml` (ta linija se ne commita natrag u git):
    ```yaml
    server:
      api_token: "<taj isti string>"
@@ -45,7 +45,12 @@ wp-admin pristup. Koraci ispod su za tebe.
    - **API token** — isti string kao u koraku 1/2
 
 7. **wp-admin → Users**: odaberi ljude kojima daješ pristup → **Edit** →
-   promijeni (ili dodaj) ulogu **rpictl operator**.
+   promijeni ulogu u **rpictl operator**.
+
+   > **Ne mijenjaj ulogu vlastitom administratorskom računu.** Users ekran ima
+   > samo jedan izbornik za ulogu, pa bi time prestao biti administrator i
+   > izgubio pristup wp-adminu. Nije ni potrebno: aktivacija plugina daje
+   > pristup panelu i ulozi administrator.
 
 8. **Really Simple Security** (ako je aktivan) → provjeri pod
    Firewall/REST API postavkama da `wp-json/rpictl/v1/*` nije blokiran; po

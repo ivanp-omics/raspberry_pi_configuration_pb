@@ -22,8 +22,8 @@ server:
 
 climate:
   poll_interval_s: 30       # koliko cesto citamo senzor (simulirane sekunde)
-  temp_on_c: 26.0           # iznad ovoga ventilator pali
-  temp_off_c: 24.0          # ispod ovoga gasi  (razlika = histereza)
+  temp_on_c: 35.0           # iznad ovoga ventilator pali (terenski ispravljeno 13 Sep 2026)
+  temp_off_c: 32.0          # ispod ovoga gasi  (razlika = histereza)
   min_on_s: 180             # kad se upali, mora raditi barem toliko
   min_off_s: 180            # kad se ugasi, mora mirovati barem toliko
   stale_after_s: 300        # nema svjezeg ocitanja toliko -> fail-safe

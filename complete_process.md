@@ -34,7 +34,7 @@ bez ijedne ručne postavke na samom uređaju:
 - jednokratan Tailscale auth key (Pi se sam prijavi na tailnet pri prvom
   paljenju — nema ekrana/browsera za normalnu prijavu)
 - `dtparam=i2c_arm=on` (senzor), `dtparam=audio=on` (razglas),
-  `gpio=17=op,dh` (ventilator radi kod nepoznatog stanja pina tijekom boota
+  `gpio=17=op,dl` (ventilator radi kod nepoznatog stanja pina tijekom boota
   — sigurnosni fail-safe, isti princip kao svugdje drugdje u sustavu)
 - osnovni paketi, ograničen journald, hardverski watchdog, swap isključen
 
@@ -139,7 +139,10 @@ prije nego su ikad dotakle pravi Pi.
    što hardver postoji samo na uređaju).
 2. U `config.yaml`: `simulate: false`, `sim_speed: 1.0`.
 3. `pip install gpiozero RPi.GPIO smbus2 bme680`
-4. Uključi I²C u `raspi-config`, provjeri `i2cdetect -y 1` (0x76 ili 0x77).
+4. `sudo apt install i2c-tools`, pa provjeri `i2cdetect -y 1` (0x76 ili 0x77).
+   I²C je već uključen u slici (`dtparam=i2c_arm=on` u `config.txt`) — ako
+   `/dev/i2c-1` postoji, `raspi-config` nije potreban. Ako senzor javi 0x77,
+   promijeni `sensor.i2c_address` u `config.yaml` (default je 0x76).
 5. `sudo apt install alsa-utils espeak-ng mpv`
 6. **Prije nego uključiš `fan_runs_when_energised`**, provjeri multimetrom
    polaritet relejnog modula — active-low/active-high i COM-NC su dvije
@@ -149,9 +152,14 @@ prije nego su ikad dotakle pravi Pi.
    bez greške u logu.
 8. `rpictl.service` u `/etc/systemd/system/`, pa
    `systemctl enable --now rpictl`.
-9. `server.host` u `config.yaml` na `0.0.0.0` (ne `127.0.0.1`) da server
-   uopće sluša na mreži — bez ovoga ni Tailscale ni WordPress bridge ne
-   mogu doći do njega, koliko god mreža bila ispravno postavljena.
+9. `server.host` ostavi na `127.0.0.1` osim ako netko treba otvoriti web
+   sučelje **s drugog uređaja** preko tailneta (`http://spremiste:8000`) —
+   tek tad treba `0.0.0.0`, jer takva veza stiže na mrežno sučelje, ne na
+   loopback. **WordPress bridge ovo ne treba**: `tailscale funnel`
+   prosljeđuje promet lokalnim procesom na istom stroju preko `127.0.0.1`
+   (provjereno testom). `0.0.0.0` usput otvara upravljanje ventilacijom i
+   razglasom i cijeloj LAN mreži skladišta — ako to ne želiš, veži server na
+   tailscale sučelje (`100.x.y.z`) umjesto na `0.0.0.0`.
 
 Od ovog trenutka isti kod koji je radio u simulaciji upravlja pravim
 senzorom, pravim relejem, pravim zvučnikom — vidi "Simulacija vs. pravi

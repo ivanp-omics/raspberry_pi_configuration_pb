@@ -10,13 +10,15 @@ import asyncio
 import contextlib
 import logging
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import (
     Depends,
     FastAPI,
+    File,
     Header,
     HTTPException,
+    UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -28,6 +30,7 @@ from .bus import Bus
 from .clock import build_clock
 from .config import Config, load_config
 from .hal.factory import build_hal
+from .media import MAX_BYTES, MediaError, MediaLibrary
 from .models import FanMode, Priority
 from .services.announcer import AnnouncerService
 from .services.climate import ClimateService
@@ -87,6 +90,7 @@ class Runtime:
             cfg.network, self.clock, self.bus, self.hal.scanner
         )
         self.telemetry = TelemetryService(cfg.telemetry, self.clock, self.bus)
+        self.media = MediaLibrary(cfg.audio.media_dir, cfg.music.media_dir)
         self._tasks: list[asyncio.Task] = []
 
     async def start(self) -> None:
@@ -197,6 +201,43 @@ def create_app(config_path: str = "config.yaml") -> FastAPI:
             await rt().music.stop()
         return rt().music.snapshot()
 
+    # -- datoteke za razglas i glazbu ---------------------------------------
+
+    @app.get("/api/media/{kind}", dependencies=[Depends(require_token)])
+    async def media_list(kind: str) -> dict:
+        try:
+            return {"kind": kind, "files": rt().media.list(kind)}
+        except MediaError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/media/{kind}", dependencies=[Depends(require_token)])
+    async def media_upload(kind: str, file: Annotated[UploadFile, File()]) -> dict:
+        # Citamo u komadima da datoteka od par GB ne zavrsi u RAM-u Pi-ja
+        # prije nego je uopce stignemo odbiti.
+        chunks: list[bytes] = []
+        total = 0
+        while chunk := await file.read(64 * 1024):
+            total += len(chunk)
+            if total > MAX_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"datoteka prelazi {MAX_BYTES // 1024 // 1024} MB",
+                )
+            chunks.append(chunk)
+        try:
+            name = rt().media.save(kind, file.filename or "", b"".join(chunks))
+        except MediaError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"saved": name, "files": rt().media.list(kind)}
+
+    @app.delete("/api/media/{kind}/{name}", dependencies=[Depends(require_token)])
+    async def media_delete(kind: str, name: str) -> dict:
+        try:
+            rt().media.delete(kind, name)
+        except MediaError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {"files": rt().media.list(kind)}
+
     # -- ubrizgavanje kvarova (samo u simulaciji) ---------------------------
 
     @app.get("/api/sim/fault", dependencies=[Depends(require_token)])
@@ -219,7 +260,15 @@ def create_app(config_path: str = "config.yaml") -> FastAPI:
     # -- dogadaji uzivo -----------------------------------------------------
 
     @app.websocket("/ws")
-    async def ws(sock: WebSocket) -> None:
+    async def ws(sock: WebSocket, token: str | None = None) -> None:
+        # Browser ne moze staviti vlastito zaglavlje na WebSocket vezu, pa
+        # token ovdje ide kao query parametar - inace bi /ws bio jedina ruta
+        # koja curi zivo stanje svakome tko dosegne port. Uvicorn access log
+        # je iskljucen (vidi __main__.py), pa token ne zavrsi zapisan.
+        expected = rt().cfg.server.api_token
+        if expected and token != expected:
+            await sock.close(code=1008)  # policy violation
+            return
         await sock.accept()
         q = rt().bus.subscribe()
         try:

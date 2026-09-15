@@ -17,8 +17,12 @@ Ili bez conde:
 
 ```bash
 python -m venv .venv && .venv\Scripts\activate     # Windows
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
+
+`requirements.txt` je namjerno **samo runtime** — to je ono što
+`provision-rpictl.sh` instalira na Pi. Za razvoj (pytest, ruff) uzmi
+`requirements-dev.txt`, koji povlači i jedno i drugo.
 
 ## Pokretanje
 
@@ -31,7 +35,7 @@ minuta traje jednu stvarnu sekundu — cijeli dan vidiš u 24 minute, pa
 ventilator kroz nekoliko minuta prijeđe puni ciklus paljenja i gašenja.
 
 ```bash
-pytest          # 24 testa, sve u milisekundama
+python -m pytest    # 43 testa, sve u milisekundama (bare "pytest" ne nalazi paket rpictl)
 ruff check .
 ```
 
@@ -215,19 +219,29 @@ GET  /api/health                  200 / 503 — za watchdog
 POST /api/fan        {"mode": "auto" | "on" | "off"}
 POST /api/announce   {"text": "..."} ili {"file": "zvono.wav"}
 POST /api/music      {"action": "play" | "stop", "track": "pjesma.mp3"}   track je opcionalan (bez njega pušta cijeli media/music)
+                     track smije biti i URL streama: {"action":"play","track":"https://ice1.somafm.com/groovesalad-128-mp3"}
+GET  /api/media/{announce|music}        popis datoteka
+POST /api/media/{announce|music}        upload (multipart, polje "file"; announce = samo .wav, max 25 MB)
+DEL  /api/media/{announce|music}/{ime}  brisanje
+GET  /api/sim/fault               trenutno stanje ubrizganog kvara, samo u simulaciji
 POST /api/sim/fault  {"freeze": true}     samo u simulaciji
 WS   /ws                          događaji uživo
 ```
 
 Ako je `server.api_token` postavljen u `config.yaml`, svaka `/api/*` ruta
-(osim `/api/health`) traži header `X-Api-Key: <token>`, inače vraća 401. Bez
+(osim `/api/health`) traži header `X-Api-Key: <token>`, inače vraća 401.
+`/ws` traži isti token kao query parametar (`/ws?token=...`), jer browser na
+WebSocket vezu ne može staviti vlastito zaglavlje — bez toga bi `/ws` bio
+jedina ruta koja živo stanje daje svakome tko dosegne port. Bez
 postavljenog tokena (default) ponašanje je identično kao prije — Tailscale
 mreža je jedina brava. Vidi "Daljinski pristup preko WordPressa" niže.
 
 ## Prelazak na Raspberry Pi
 
 1. `simulate: false` i `sim_speed: 1.0` u `config.yaml`
-2. `pip install gpiozero RPi.GPIO smbus2 bme680`
+2. `sudo apt install python3-gpiozero python3-lgpio python3-smbus2` pa
+   `pip install bme680` u venv napravljen s `--system-site-packages`.
+   (`RPi.GPIO` na Trixieju više ne radi — gpiozero koristi `lgpio`.)
 3. uključi I²C u `raspi-config`, provjeri `i2cdetect -y 1` (0x76 ili 0x77)
 4. `sudo apt install alsa-utils espeak-ng mpv`
 5. `rpictl.service` u `/etc/systemd/system/`, pa `systemctl enable --now rpictl`
@@ -310,11 +324,18 @@ običnog javnog interneta, dok SSH i sve ostalo na Pi-ju ostaje skriveno iza
 privatne mreže kao i prije — zato ta dva puta (SSH-only tailnet i WordPress
 bridge preko Funnela) rade potpuno neovisno jedan o drugom.
 
-`server.host` u `config.yaml` mora biti `0.0.0.0` (ne `127.0.0.1`) da bi server
-uopće slušao na mreži. Uređaj je spojen i na obični Ethernet (ne samo
-Tailscale) — ako ne želiš da razglas/ventilacija budu dohvatljivi i s te LAN
-mreže (npr. cijeli ured/skladište), veži server konkretno na tailscale
-sučelje (`100.x.y.z`) umjesto na `0.0.0.0`.
+`server.host` u `config.yaml` treba biti `0.0.0.0` (ne `127.0.0.1`) **samo**
+ako želiš da netko s drugog uređaja otvori web sučelje izravno preko tailneta
+(`http://spremiste:8000`, sekcija "Kako netko dobije pristup" niže) ili preko
+obične LAN mreže — takva veza stiže na tailscale/Ethernet mrežno sučelje, ne
+na loopback, pa je server vezan na `127.0.0.1` odbija.
+
+Za WordPress bridge (Funnel) ovo **nije potrebno** — `tailscale funnel`
+prosljeđuje promet lokalnim procesom na istom stroju preko `127.0.0.1` (isto
+kao pri desktop testiranju: default `host: "127.0.0.1"` iz `config.yaml` radi
+bez ikakve izmjene). Ako ipak postaviš `0.0.0.0`, to dodatno otvara server i
+prema LAN-u (ako je uređaj i na Ethernetu) — ako to ne želiš, veži ga
+konkretno na tailscale sučelje (`100.x.y.z`) umjesto na `0.0.0.0`.
 
 **Kako netko dobije pristup:** to je `tailscale_Readme.md` DIO 3, "Vrata 1 —
 mreža" — ADMIN na `login.tailscale.com` → Machines → `spremiste` → **Share**,
@@ -352,9 +373,9 @@ URL koji Tailscale daje jednom uređaju, bez port-forwardinga na routeru) i
 tokena postavljenog u `server.api_token`. Pi mora imati taj token postavljen
 — inače je Funnel otvorena rupa bez ikakve zaštite.
 
-Postavljanje na Pi-ju:
+Postavljanje na Pi-ju (preko SSH-a, ručno u `config.local.yaml` — ta linija se ne commita):
 ```bash
-# u config.yaml:
+# u config.local.yaml:
 # server:
 #   api_token: "<openssl rand -hex 32>"
 sudo systemctl restart rpictl
