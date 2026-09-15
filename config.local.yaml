@@ -1,4 +1,4 @@
-# rpictl - spremiste, stvarni hardver. Vrijednosti provjerene 12 Sep 2026 (vidi complete_process.md).
+# rpictl - spremiste, stvarni hardver. Vrijednosti provjerene 12 Sep 2026 (vidi readmes/cjeloviti-proces.md).
 # Ovaj fajl JE trackan u gitu - to je namjerno, da se hardverske postavke prate kroz git povijest.
 # JEDINA iznimka je "api_token" ispod: to polje ostaje prazno u gitu. Na uredjaju,
 # preko SSH-a (ssh ivan@spremiste), rucno upisi pravu vrijednost (generiraj s

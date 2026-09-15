@@ -6,8 +6,8 @@ daje kontrolu spremišta (ventilacija, razglas, glazba) preko Raspberry Pi-ja.
 Browser nikad ne zove Pi izravno — samo ovaj plugin, server-to-server, preko
 `wp_remote_get`/`wp_remote_post`, s tajnim tokenom koji nikad ne napušta
 server. Puni kontekst i arhitektura: `WordPress kao ulaznica za punu kontrolu
-rpictl-a` plan u glavnom repou, i `README.md`/`tailscale_Readme.md` u
-`rpictl` projektu.
+rpictl-a` plan u glavnom repou, i `readmes/rpictl-pregled.md`/`readmes/postavljanje-uredaja.md`
+u `rpictl` projektu.
 
 **Ovaj plugin ja (Claude) ne mogu instalirati umjesto tebe** — nemam FTP ni
 wp-admin pristup. Koraci ispod su za tebe.

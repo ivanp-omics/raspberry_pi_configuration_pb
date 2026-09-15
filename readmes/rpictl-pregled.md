@@ -267,14 +267,14 @@ ionako radi samo od sebe.
 ## Daljinski pristup i drugi ljudi
 
 Puni postupak postavljanja uređaja, dodavanja ljudi na Tailscale i SSH pristupa
-je u **`tailscale_Readme.md`** (uloge ADMIN / INSTALATER / KORISNIK) — ovo je
+je u **`readmes/postavljanje-uredaja.md`** (uloge ADMIN / INSTALATER / KORISNIK) — ovo je
 samo dio koji se nadovezuje na to, specifično za **web sučelje rpictl-a** na
 portu 8000 (za razliku od SSH pristupa uređaju, koji je posve odvojena stvar).
 
 ### Kako Tailscale i SSH zapravo rade "iza scene"
 
 Ovo dvoje rješava dva **različita** problema i uopće se ne poznaju — vrijedi
-razumjeti prije ostatka ove sekcije, jer se svaki korak u `tailscale_Readme.md`
+razumjeti prije ostatka ove sekcije, jer se svaki korak u `readmes/postavljanje-uredaja.md`
 oslanja na ovaj mehanizam bez da ga ponovno objašnjava.
 
 **Tailscale = privatna cesta.** Pi u spremištu sjedi iza običnog routera koji
@@ -301,10 +301,10 @@ ili adresa. Kad upišeš `ssh ivan@spremiste`:
 Dakle Tailscale = "kako doći do vrata", SSH = "kako se vrata otključavaju".
 Da Tailscale nije pokrenut (ugašena ikona u trayu), `ssh ivan@spremiste` ne
 zna što je `spremiste` — točno greška `Could not resolve hostname` iz
-tablice u `tailscale_Readme.md`.
+tablice u `readmes/postavljanje-uredaja.md`.
 
 **Kako se Pi uopće prvi put pridružio toj mreži** (DIO 1–2 u
-`tailscale_Readme.md`): slika diska je unaprijed pripremljena (cloud-init
+`readmes/postavljanje-uredaja.md`): slika diska je unaprijed pripremljena (cloud-init
 `user-data`) s ADMIN-ovim SSH javnim ključem i jednokratnim Tailscale auth
 key-em već ugrađenima — Pi OS *Lite* nema ekran/browser za normalnu prijavu,
 pa se pri prvom paljenju sam, automatski prijavi na tailnet tim auth key-em.
@@ -337,7 +337,7 @@ bez ikakve izmjene). Ako ipak postaviš `0.0.0.0`, to dodatno otvara server i
 prema LAN-u (ako je uređaj i na Ethernetu) — ako to ne želiš, veži ga
 konkretno na tailscale sučelje (`100.x.y.z`) umjesto na `0.0.0.0`.
 
-**Kako netko dobije pristup:** to je `tailscale_Readme.md` DIO 3, "Vrata 1 —
+**Kako netko dobije pristup:** to je `readmes/postavljanje-uredaja.md` DIO 3, "Vrata 1 —
 mreža" — ADMIN na `login.tailscale.com` → Machines → `spremiste` → **Share**,
 i pošalje link KORISNIKU. Čim KORISNIK prihvati link svojim Tailscale
 računom, u browseru otvara `http://spremiste:8000` (Tailscale MagicDNS

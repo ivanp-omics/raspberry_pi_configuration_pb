@@ -2,20 +2,20 @@
 
 Ovaj dokument spaja tri odvojena README-a u jedan linearan put, redoslijedom
 kojim se stvarno izvodi. Svaka faza kaže **tko** je radi (uloge iz
-`tailscale_Readme.md`: ADMIN / INSTALATER / KORISNIK) i **gdje piše puni
+`readmes/postavljanje-uredaja.md`: ADMIN / INSTALATER / KORISNIK) i **gdje piše puni
 detalj** (troubleshooting tablice, sve varijante) ako nešto zapne — ovaj
 dokument namjerno ne ponavlja svaku sitnicu iz sve tri datoteke, nego je
 karta koja ih povezuje.
 
 | Faza | Što | Tko | Puni detalj |
 |---|---|---|---|
-| 0 | Priprema slike diska | ADMIN | `tailscale_Readme.md`, Prilog |
-| 1 | Fizičko postavljanje uređaja | INSTALATER | `tailscale_Readme.md` DIO 1 |
-| 2 | Prvo spajanje (Tailscale + SSH) | ADMIN | `tailscale_Readme.md` DIO 2 |
-| 3 | Pokretanje rpictl-a (simulacija) | dev | `README.md` Postavljanje/Pokretanje |
-| 4 | Prelazak na pravi hardver | ADMIN | `README.md` Prelazak na Raspberry Pi |
-| 5 | Pristup drugim ljudima preko Tailscalea | ADMIN + KORISNIK | `tailscale_Readme.md` DIO 3, `README.md` Daljinski pristup |
-| 6 | WordPress bridge — Pi strana | ADMIN | `README.md` Daljinski pristup preko WordPressa |
+| 0 | Priprema slike diska | ADMIN | `readmes/postavljanje-uredaja.md`, Prilog |
+| 1 | Fizičko postavljanje uređaja | INSTALATER | `readmes/postavljanje-uredaja.md` DIO 1 |
+| 2 | Prvo spajanje (Tailscale + SSH) | ADMIN | `readmes/postavljanje-uredaja.md` DIO 2 |
+| 3 | Pokretanje rpictl-a (simulacija) | dev | `readmes/rpictl-pregled.md` Postavljanje/Pokretanje |
+| 4 | Prelazak na pravi hardver | ADMIN | `readmes/rpictl-pregled.md` Prelazak na Raspberry Pi |
+| 5 | Pristup drugim ljudima preko Tailscalea | ADMIN + KORISNIK | `readmes/postavljanje-uredaja.md` DIO 3, `readmes/rpictl-pregled.md` Daljinski pristup |
+| 6 | WordPress bridge — Pi strana | ADMIN | `readmes/rpictl-pregled.md` Daljinski pristup preko WordPressa |
 | 7 | WordPress bridge — WordPress strana | ADMIN | `wordpress-plugin/rpictl-bridge/README.md` |
 | 8 | Provjera cijelog lanca | svi | ovaj dokument, dolje |
 
@@ -66,7 +66,7 @@ podići s iste slike.
 
 Instaliraj Tailscale (`tailscale.com/download`), prijavi se **interaktivno**
 kroz browser (to je drugačiji mehanizam od auth key-a kojim se Pi sam
-prijavio u Fazi 0/1 — vidi objašnjenje mehanizma u `README.md`, "Kako
+prijavio u Fazi 0/1 — vidi objašnjenje mehanizma u `readmes/rpictl-pregled.md`, "Kako
 Tailscale i SSH zapravo rade iza scene"). Provjeri: `tailscale status`.
 
 Kad se `spremiste` pojavi u `tailscale status` (može potrajati do 20 min od
@@ -134,7 +134,7 @@ prije nego su ikad dotakle pravi Pi.
 
 **Tko: ADMIN, na Pi-ju (preko SSH-a iz Faze 2), kad je kod iz Faze 3 gotov.**
 
-1. Kod stigne na Pi (git pull, ili scp, vidi `tailscale_Readme.md` DIO 4 za
+1. Kod stigne na Pi (git pull, ili scp, vidi `readmes/postavljanje-uredaja.md` DIO 4 za
    svakodnevni radni tok — VS Code Remote-SSH je preporučen alat baš zato
    što hardver postoji samo na uređaju).
 2. U `config.yaml`: `simulate: false`, `sim_speed: 1.0`.
@@ -163,7 +163,7 @@ prije nego su ikad dotakle pravi Pi.
 
 Od ovog trenutka isti kod koji je radio u simulaciji upravlja pravim
 senzorom, pravim relejem, pravim zvučnikom — vidi "Simulacija vs. pravi
-hardver" u `README.md` za zašto ostatak koda ne mora znati razliku.
+hardver" u `readmes/rpictl-pregled.md` za zašto ostatak koda ne mora znati razliku.
 
 ## Faza 5 — Pristup drugim ljudima preko Tailscalea
 
@@ -172,7 +172,7 @@ hardver" u `README.md` za zašto ostatak koda ne mora znati razliku.
 Dva različita cilja, dva različita nivoa pristupa:
 
 **A) Netko treba SSH (razvoj/administracija)** — puna procedura,
-`tailscale_Readme.md` DIO 3, "dvoja vrata":
+`readmes/postavljanje-uredaja.md` DIO 3, "dvoja vrata":
 1. KORISNIK: `ssh-keygen -t ed25519`, pošalje ADMIN-u `id_ed25519.pub`
    (**javni**, ne privatni — ADMIN provjerava da red počinje s
    `ssh-ed25519`, ne s `BEGIN OPENSSH PRIVATE KEY`).
