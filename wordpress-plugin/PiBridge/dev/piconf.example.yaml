@@ -1,0 +1,10 @@
+# Kopiraj ovaj fajl u "piconf.yaml" (bez .example) u istoj mapi i upiši
+# stvarne vrijednosti. piconf.yaml je namjerno u .gitignore - nikad se ne
+# commita, sadrži API token.
+#
+# Kad piconf.yaml postoji, "python devserver.py" prikazuje STVARNO stanje
+# s Pija (server-to-server, isti obrazac kao pibridge.php). Bez njega,
+# devserver.py vraća izmišljene (mock) podatke.
+
+pi_url: "https://spremiste.tail3daeab.ts.net"
+api_token: "isti-string-kao-server.api_token-u-config.local.yaml"

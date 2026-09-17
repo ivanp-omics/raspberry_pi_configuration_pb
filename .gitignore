@@ -8,3 +8,6 @@ data/*.sqlite-journal
 
 # Zapakirani plugin za WordPress - artefakt koji zastari cim se plugin dirne.
 wordpress-plugin/*.zip
+
+# PiBridge lokalni dev preview - sadrzi Pi Funnel URL + api_token. Nikad u git.
+wordpress-plugin/PiBridge/dev/piconf.yaml

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="hr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PiBridge — lokalni pregled</title>
+<link rel="stylesheet" href="/assets/panel.css">
+<style>
+  /* Samo za ovu pregled-stranicu - plugin sam ovo nikad ne ucitava. */
+  body { background:#eef1f2; margin:0; padding:24px 16px 56px; font-family:system-ui,sans-serif; }
+  .dev-wrap { max-width:560px; margin:0 auto; }
+  .dev-banner {
+    background:#18232a; color:#fff; font-size:13px; padding:10px 14px;
+    border-radius:8px; margin-bottom:16px; font-family:ui-monospace,monospace;
+  }
+  .dev-banner b { color:#e8853a; }
+</style>
+</head>
+<body>
+<div class="dev-wrap">
+  <div class="dev-banner" id="dev-banner">🔧 Lokalni pregled — pokreni preko <code>python devserver.py</code>, ne otvaraj ovaj fajl izravno (dvoklikom) jer bez servera nema podataka.</div>
+  <div id="pibridge-panel" class="pibridge-panel">Učitavam...</div>
+</div>
+
+<script>
+  // devserver.py servira i ovaj isti /dev-api put i za mock i za stvarne
+  // podatke (ovisno o dev/piconf.yaml) - panel.js ne zna niti mu treba
+  // znati razliku, isti kod kao u pravom WordPress pluginu.
+  window.pibridgeBridge = { restUrl: "/dev-api", nonce: "dev" };
+</script>
+<script src="/assets/panel.js"></script>
+</body>
+</html>

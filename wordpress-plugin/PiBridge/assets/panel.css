@@ -1,0 +1,181 @@
+/* PiBridge - namjerno oskudan stil, skopiran unutar .pibridge-panel da se ne
+   kosi ni s jednom postojecom stranicom (Elementor/Hello Elementor). Boje i
+   tipografija preuzete iz rpictl/web/index.html radi vizualne blizine. */
+.pibridge-panel {
+  --pb-paper: #eef1f2;
+  --pb-card: #ffffff;
+  --pb-ink: #18232a;
+  --pb-muted: #5e7079;
+  --pb-line: #c9d3d7;
+  --pb-fan: #e8853a;
+  --pb-signal: #2f7fb5;
+  --pb-audio: #2e9b57;
+  --pb-alarm: #c0392b;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  max-width: 520px;
+  color: var(--pb-ink);
+}
+
+.pibridge-panel .pibridge-conn {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--pb-muted);
+  margin-bottom: 10px;
+}
+.pibridge-panel .pibridge-conn b { font-weight: 600; color: var(--pb-audio); }
+.pibridge-panel .pibridge-conn.down b { color: var(--pb-alarm); }
+
+.pibridge-panel .pibridge-row {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--pb-line);
+  border-radius: 8px;
+  background: var(--pb-card);
+}
+.pibridge-panel .pibridge-row h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: var(--pb-muted);
+  text-transform: none;
+}
+
+/* ---- temperatura ---- */
+.pibridge-panel .pibridge-temp {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 40px;
+  font-weight: 500;
+  letter-spacing: -.02em;
+}
+.pibridge-panel .pibridge-side {
+  font-size: 13px;
+  color: var(--pb-muted);
+  margin-top: 4px;
+}
+
+/* ---- traka histereze ---- */
+.pibridge-panel .pibridge-track {
+  position: relative;
+  height: 22px;
+  border: 1px solid var(--pb-line);
+  border-radius: 4px;
+  background: linear-gradient(90deg, #e7eef2, #fbf0e6);
+  margin-top: 12px;
+}
+.pibridge-panel .pibridge-window {
+  position: absolute; top: 0; bottom: 0;
+  background: rgba(232, 133, 58, .18);
+  border-left: 1px solid var(--pb-fan);
+  border-right: 1px solid var(--pb-fan);
+}
+.pibridge-panel .pibridge-marker {
+  position: absolute; top: -4px; bottom: -4px; width: 3px;
+  background: var(--pb-ink);
+}
+.pibridge-panel .pibridge-scale {
+  display: flex; justify-content: space-between; margin-top: 5px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px; color: var(--pb-muted);
+}
+
+/* ---- ventilator ---- */
+.pibridge-panel .pibridge-fanrow {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.pibridge-panel .pibridge-lamp {
+  width: 12px; height: 12px; border-radius: 50%; background: var(--pb-line); flex: none;
+}
+.pibridge-panel .pibridge-lamp.on {
+  background: var(--pb-fan); box-shadow: 0 0 0 4px rgba(232, 133, 58, .2);
+}
+.pibridge-panel .pibridge-reason {
+  color: var(--pb-muted); font-size: 13px; margin: 8px 0 0;
+}
+.pibridge-panel .pibridge-reason.bad { color: var(--pb-alarm); font-weight: 500; }
+
+/* ---- graf ---- */
+.pibridge-panel svg.pibridge-spark { width: 100%; height: 100px; display: block; }
+.pibridge-panel .pibridge-spark-empty {
+  color: var(--pb-muted); font-size: 13px; padding: 20px 0; text-align: center;
+}
+
+/* ---- gumbi ---- */
+.pibridge-panel .pibridge-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.pibridge-panel .pibridge-buttons button {
+  flex: 1;
+  padding: 8px 4px;
+  border: 1px solid var(--pb-line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--pb-ink);
+  cursor: pointer;
+  font-size: 14px;
+}
+.pibridge-panel .pibridge-buttons button:hover:not(:disabled) {
+  background: #f4f7f8;
+}
+.pibridge-panel .pibridge-buttons button:disabled {
+  background: var(--pb-ink);
+  color: #fff;
+  cursor: default;
+}
+
+/* ---- razglas / unos ---- */
+.pibridge-panel .pibridge-say {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.pibridge-panel .pibridge-say input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--pb-line);
+  border-radius: 6px;
+}
+.pibridge-panel .pibridge-say button {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--pb-audio);
+  color: #fff;
+  cursor: pointer;
+}
+
+/* ---- mreža ---- */
+.pibridge-panel ul.pibridge-hosts {
+  list-style: none; margin: 0; padding: 0;
+  font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px;
+}
+.pibridge-panel ul.pibridge-hosts li {
+  display: flex; gap: 10px; align-items: center; padding: 6px 0;
+  border-bottom: 1px solid #eef2f3;
+}
+.pibridge-panel ul.pibridge-hosts li:last-child { border-bottom: 0; }
+.pibridge-panel .pibridge-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--pb-line); flex: none;
+}
+.pibridge-panel .pibridge-dot.up { background: var(--pb-signal); }
+.pibridge-panel .pibridge-hname {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: system-ui, sans-serif;
+}
+.pibridge-panel .pibridge-hip { color: var(--pb-muted); }
+.pibridge-panel .pibridge-offline .pibridge-hname,
+.pibridge-panel .pibridge-offline .pibridge-hip {
+  color: var(--pb-muted); text-decoration: line-through;
+}
+
+.pibridge-panel .pibridge-error {
+  color: var(--pb-alarm);
+  font-weight: 500;
+}
+.pibridge-denied {
+  color: #5e7079;
+  font-style: italic;
+}
