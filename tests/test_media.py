@@ -42,10 +42,12 @@ def test_apsolutna_putanja_ne_izlazi_iz_mape(lib, tmp_path):
 def test_odbija_nedopusten_nastavak(lib):
     with pytest.raises(MediaError):
         lib.save("announce", "skripta.sh", b"x")
-    # aplay cita samo WAV - mp3 za najavu ne prolazi, iako prolazi za glazbu.
+    # Dvije vrste imaju razlicite popise: flac je glazba, ali ne i najava.
+    # (Najava od prelaska na mpv prima i webm/ogg/m4a/mp3 - snimke iz browsera.)
     with pytest.raises(MediaError):
-        lib.save("announce", "pjesma.mp3", b"x")
-    assert lib.save("music", "pjesma.mp3", b"x") == "pjesma.mp3"
+        lib.save("announce", "pjesma.flac", b"x")
+    assert lib.save("music", "pjesma.flac", b"x") == "pjesma.flac"
+    assert lib.save("announce", "snimka.webm", b"x") == "snimka.webm"
 
 
 def test_odbija_prazno_i_cudno_ime(lib):

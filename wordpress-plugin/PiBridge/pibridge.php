@@ -139,6 +139,69 @@ function pibridge_request(string $method, string $endpoint, ?array $body = null)
     return new WP_REST_Response($data, $code);
 }
 
+/**
+ * Isto kao pibridge_request(), ali za binarni sadrzaj (snimka isjecka).
+ *
+ * Audio se vraca kao base64 unutar JSON-a, a ne kao sirovi izlaz: sirovi
+ * izlaz iz REST rute trazi header()+exit(), sto na dijeljenom hostingu lako
+ * pokvari bilo koji drugi plugin s output bufferingom. 33 % vise bajtova na
+ * ~30 kB isjecku je bezbolna cijena za pouzdanost.
+ *
+ * @param string|null $raw_body sirovo tijelo koje se prosljeduje Pi-ju
+ */
+function pibridge_audio_request(
+    string $method,
+    string $endpoint,
+    ?string $raw_body = null,
+    string $content_type = 'application/octet-stream',
+    int $timeout = 5
+): WP_REST_Response|WP_Error {
+    $pi_url = trim((string) get_option('pibridge_pi_url', ''));
+    if (!$pi_url) {
+        return new WP_Error('pibridge_not_configured', 'Pi URL nije postavljen (Settings -> PiBridge).', ['status' => 500]);
+    }
+    $args = [
+        'timeout' => $timeout,
+        'headers' => ['X-Api-Key' => (string) get_option('pibridge_api_token', '')],
+    ];
+    if ($raw_body !== null) {
+        $args['headers']['Content-Type'] = $content_type;
+        $args['body'] = $raw_body;
+    }
+
+    $response = $method === 'POST'
+        ? wp_remote_post(rtrim($pi_url, '/') . $endpoint, $args)
+        : wp_remote_get(rtrim($pi_url, '/') . $endpoint, $args);
+
+    if (is_wp_error($response)) {
+        return new WP_Error('pibridge_unreachable', 'Ne mogu se spojiti na Pi: ' . $response->get_error_message(), ['status' => 502]);
+    }
+
+    $code = wp_remote_retrieve_response_code($response);
+    if ($code === 401) {
+        return new WP_Error(
+            'pibridge_bad_token',
+            'Pi je odbio token. Provjeri da je API token u Settings -> PiBridge identican onome u server.api_token na Pi-ju.',
+            ['status' => 502]
+        );
+    }
+    $body = wp_remote_retrieve_body($response);
+    if ($code !== 200) {
+        $detail = json_decode($body, true);
+        return new WP_Error(
+            'pibridge_pi_error',
+            is_array($detail) && isset($detail['detail']) ? (string) $detail['detail'] : 'Pi je vratio ' . $code,
+            ['status' => $code === 409 ? 409 : 502]
+        );
+    }
+
+    return new WP_REST_Response([
+        'mime' => wp_remote_retrieve_header($response, 'content-type') ?: 'audio/ogg',
+        'bytes' => strlen($body),
+        'audio_base64' => base64_encode($body),
+    ], 200);
+}
+
 add_action('rest_api_init', function () {
     register_rest_route(PIBRIDGE_NS, '/status', [
         'methods' => 'GET',
@@ -190,7 +253,77 @@ add_action('rest_api_init', function () {
         },
         'permission_callback' => 'pibridge_can_operate',
     ]);
+
+    register_rest_route(PIBRIDGE_NS, '/music-volume', [
+        'methods' => 'POST',
+        'callback' => fn(WP_REST_Request $req) => pibridge_request(
+            'POST', '/api/music/volume', ['volume' => (int) $req->get_param('volume')]
+        ),
+        'permission_callback' => 'pibridge_can_operate',
+    ]);
+
+    // Snimka s mikrofona u browseru -> odmah na razglas. Tijelo je sirov audio
+    // (ne multipart), pa se samo prosljeduje dalje bez sastavljanja formulara.
+    register_rest_route(PIBRIDGE_NS, '/announce-clip', [
+        'methods' => 'POST',
+        'callback' => function (WP_REST_Request $req) {
+            $ext = preg_replace('/[^a-z0-9]/', '', strtolower((string) $req->get_param('ext'))) ?: 'webm';
+            $raw = $req->get_body();
+            if ($raw === '') {
+                return new WP_Error('pibridge_empty_clip', 'Snimka je prazna.', ['status' => 422]);
+            }
+            return pibridge_request_passthrough(
+                '/api/announce/clip?ext=' . rawurlencode($ext),
+                $raw,
+                $req->get_content_type()['value'] ?? 'application/octet-stream'
+            );
+        },
+        'permission_callback' => 'pibridge_can_operate',
+    ]);
+
+    // Isjecak prostorije. Timeout mora biti duzi od trajanja snimke (Pi drzi
+    // vezu otvorenu dok snima), za razliku od ostalih ruta gdje je 5 s dosta.
+    register_rest_route(PIBRIDGE_NS, '/listen', [
+        'methods' => 'POST',
+        'callback' => fn() => pibridge_audio_request('POST', '/api/listen', null, 'application/octet-stream', 45),
+        'permission_callback' => 'pibridge_can_operate',
+    ]);
 });
+
+/**
+ * Proslijedi sirovo tijelo Pi-ju i vrati njegov JSON odgovor kakav je.
+ */
+function pibridge_request_passthrough(
+    string $endpoint,
+    string $raw_body,
+    string $content_type
+): WP_REST_Response|WP_Error {
+    $pi_url = trim((string) get_option('pibridge_pi_url', ''));
+    if (!$pi_url) {
+        return new WP_Error('pibridge_not_configured', 'Pi URL nije postavljen (Settings -> PiBridge).', ['status' => 500]);
+    }
+    $response = wp_remote_post(rtrim($pi_url, '/') . $endpoint, [
+        'timeout' => 15,
+        'headers' => [
+            'X-Api-Key' => (string) get_option('pibridge_api_token', ''),
+            'Content-Type' => $content_type,
+        ],
+        'body' => $raw_body,
+    ]);
+
+    if (is_wp_error($response)) {
+        return new WP_Error('pibridge_unreachable', 'Ne mogu se spojiti na Pi: ' . $response->get_error_message(), ['status' => 502]);
+    }
+    $code = wp_remote_retrieve_response_code($response);
+    if ($code === 401) {
+        return new WP_Error(
+            'pibridge_bad_token',
+            'Pi je odbio token. Provjeri da je API token u Settings -> PiBridge identican onome na Pi-ju.',
+            ['status' => 502]
+        );
+    }
+    return new WP_REST_Response(json_decode(wp_remote_retrieve_body($response), true), $code);
+}
 
 // --------------------------------------------------------------------------
 // Shortcode [pibridge_panel]

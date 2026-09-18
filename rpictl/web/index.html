@@ -24,6 +24,10 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
+  /* Mora ici s !important: svaka klasa koja postavi display (.tokenrow,
+     .recrow) inace nadjaca preglednikovo ugradeno [hidden]{display:none},
+     pa atribut hidden tiho prestane raditi. */
+  [hidden]{display:none!important}
   body{
     background:var(--paper);
     color:var(--ink);
@@ -138,20 +142,51 @@
   .hip{color:var(--muted)}
   .offline .hname,.offline .hip{color:var(--muted);text-decoration:line-through}
 
-  /* ---- kvarovi ---- */
-  .faults{display:flex;flex-wrap:wrap;gap:8px}
-  .faults button{
+  /* ---- kvarovi, brze radnje, postaje ---- */
+  .faults,.quick,.stations{display:flex;flex-wrap:wrap;gap:8px}
+  .quick,.stations{margin-top:10px}
+  .faults button,.quick button,.stations button{
     appearance:none;font-family:inherit;font-size:13px;padding:7px 12px;cursor:pointer;
     border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);
   }
+  .faults button:hover,.quick button:hover,.stations button:hover{background:#f4f7f8}
   .faults button[aria-pressed="true"]{background:var(--alarm);border-color:var(--alarm);color:#fff}
-  .faults button:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+  .stations button[aria-pressed="true"]{background:var(--audio);border-color:var(--audio);color:#fff}
+  .faults button:focus-visible,.quick button:focus-visible,.stations button:focus-visible{
+    outline:2px solid var(--signal);outline-offset:2px}
+  .quick button:disabled,.stations button:disabled{opacity:.5;cursor:default}
   .hint{font-size:13px;color:var(--muted);margin:10px 0 0}
+
+  /* ---- glasnoca ---- */
+  .volrow{display:flex;align-items:center;gap:10px;margin-top:12px}
+  .volrow label{font-size:13px;color:var(--muted);flex:none}
+  .volrow input[type=range]{flex:1;min-width:0;accent-color:var(--audio)}
+  .volval{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+    font-size:13px;color:var(--muted);flex:none;width:44px;text-align:right}
+
+  .stationrow{margin-top:10px}
+  select{
+    flex:1;min-width:0;font-family:inherit;font-size:14px;padding:9px 10px;
+    border:1px solid var(--line);border-radius:6px;background:#fbfcfc;color:var(--ink);
+  }
+  select:focus{outline:2px solid var(--audio);outline-offset:-1px;border-color:var(--audio)}
+
+  /* ---- snimanje ---- */
+  .recrow{display:flex;align-items:center;gap:10px;margin-top:10px}
+  .recdot{width:12px;height:12px;border-radius:50%;background:var(--alarm);flex:none;
+    animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.25}}
+  .rectime{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+    font-weight:500;flex:1}
+  audio{width:100%;margin-top:10px;display:block}
 
   footer{font-size:12px;color:var(--muted);text-align:center;margin-top:22px;
     font-family:"IBM Plex Mono",monospace}
 
-  @media (prefers-reduced-motion:reduce){.marker{transition:none}}
+  @media (prefers-reduced-motion:reduce){
+    .marker{transition:none}
+    .recdot{animation:none}
+  }
 </style>
 </head>
 <body>
@@ -184,7 +219,7 @@
         <div class="window" id="window"></div>
         <div class="marker" id="marker" style="left:50%"></div>
       </div>
-      <div class="scale"><span>15 °C</span><span id="thresholds">gasi -- / pali --</span><span>35 °C</span></div>
+      <div class="scale"><span>0 °C</span><span id="thresholds">gasi -- / pali --</span><span>50 °C</span></div>
     </div>
   </section>
 
@@ -213,6 +248,15 @@
       <input id="saytext" placeholder="Tekst najave" aria-label="Tekst najave">
       <button class="go" id="saybtn">Najavi</button>
     </div>
+    <div class="quick" id="quick">
+      <button id="dingbtn" type="button">🔔 Ding dong</button>
+      <button id="recbtn" type="button">⏺ Snimi</button>
+    </div>
+    <div class="recrow" id="recrow" hidden>
+      <span class="recdot"></span>
+      <span class="rectime" id="rectime">Snimam… 0:00</span>
+      <button class="go" id="recstop" type="button">■ Stani</button>
+    </div>
     <p class="hint" id="saystate">Red je prazan.</p>
   </section>
 
@@ -222,7 +266,35 @@
       <button class="go" id="musicplay">Pusti</button>
       <button class="go secondary" id="musicstop">Zaustavi</button>
     </div>
+
+    <div class="volrow">
+      <label for="vol">Glasnoća</label>
+      <input type="range" id="vol" min="0" max="100" step="1" value="40"
+             aria-label="Glasnoća glazbe">
+      <span class="volval" id="volval">40 %</span>
+    </div>
+
+    <div class="say stationrow">
+      <select id="stationpick" aria-label="Odaberi radio postaju">
+        <option value="">— odaberi postaju —</option>
+      </select>
+    </div>
+    <div class="say">
+      <input id="stationurl" placeholder="ili upiši adresu streama" aria-label="Adresa streama"
+             autocomplete="off" spellcheck="false">
+      <button class="go" id="stationplay">Pusti</button>
+    </div>
+
     <p class="hint" id="musicstate">Zaustavljeno.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Slušanje prostorije</h2>
+    <div class="quick">
+      <button id="listenbtn" type="button">🎧 Snimi</button>
+    </div>
+    <div id="listenbox"></div>
+    <p class="hint" id="listenstate">Snimi kratak isječak da čuješ što se tamo događa.</p>
   </section>
 
   <section class="panel">
@@ -245,7 +317,7 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-const T_MIN = 15, T_MAX = 35;
+const T_MIN = 0, T_MAX = 50;
 let state = null;
 
 // Token se ovdje cuva samo u localStorage ovog browsera (nikad ne ide u
@@ -342,6 +414,20 @@ function render(s){
     m.status === "ducked" ? "Pauzirano (najava)" :
     "Zaustavljeno.";
 
+  // Ne diraj klizac dok ga korisnik vuce - inace mu osvjezavanje statusa
+  // otme rucku ispod prsta i vrati je na staru vrijednost.
+  if (m.volume != null && !volDirty){
+    $("vol").value = m.volume;
+    $("volval").textContent = m.volume + " %";
+  }
+
+  drawStations(s);
+
+  // Guard na disabled: status se osvjezava i tijekom snimanja, pa bez njega
+  // natpis "Snimam..." odmah pregazi natrag na "Snimi 10 s".
+  if (s.listen && !$("listenbtn").disabled)
+    $("listenbtn").textContent = `🎧 Snimi ${s.listen.clip_seconds} s`;
+
   $("foot").textContent = s.simulate
     ? `simulacija · vrijeme ×${s.sim_speed} · ${c.reads} očitanja, ${c.errors} grešaka, ${c.cycles} ciklusa`
     : `uređaj · ${c.reads} očitanja, ${c.errors} grešaka, ${c.cycles} ciklusa`;
@@ -381,13 +467,195 @@ function drawSpark(rows){
 function drawHosts(d){
   const ul = $("hosts");
   if (!d.hosts.length){ ul.innerHTML = '<li><span class="hname">Nema uređaja.</span></li>'; return; }
-  ul.innerHTML = d.hosts.map(h => `
-    <li class="${h.online ? "" : "offline"}">
-      <span class="dot ${h.online ? "up" : ""}"></span>
-      <span class="hname">${h.hostname || "nepoznat uređaj"}</span>
-      <span class="hip">${h.ip}</span>
-    </li>`).join("");
+  // Elementi se grade kroz DOM, a ne kroz innerHTML: hostname dolazi s mreze
+  // (DHCP), pa bi uredaj s imenom tipa "<img onerror=...>" inace izvrsio
+  // svoj kod u browseru onoga kto gleda panel.
+  ul.replaceChildren(...d.hosts.map(h => {
+    const li = document.createElement("li");
+    if (!h.online) li.className = "offline";
+    const dot = document.createElement("span");
+    dot.className = "dot" + (h.online ? " up" : "");
+    const name = document.createElement("span");
+    name.className = "hname";
+    name.textContent = h.hostname || "nepoznat uređaj";
+    const ip = document.createElement("span");
+    ip.className = "hip";
+    ip.textContent = h.ip;
+    li.append(dot, name, ip);
+    return li;
+  }));
 }
+
+// ---- radio postaje (preseti dolaze iz config.yaml, ne iz ove datoteke) ----
+// Izbornik samo popuni polje s adresom; pusta se uvijek ono sto u polju pise,
+// pa se moze i rucno upisati bilo koji stream koji nije na popisu.
+let stationsDrawn = false;
+function drawStations(s){
+  if (stationsDrawn || !s.stations) return;
+  const sel = $("stationpick");
+  const prazna = document.createElement("option");
+  prazna.value = "";
+  prazna.textContent = "— odaberi postaju —";
+  sel.replaceChildren(prazna, ...s.stations.map(st => {
+    const o = document.createElement("option");
+    o.value = st.url;
+    o.textContent = st.name;
+    return o;
+  }));
+  stationsDrawn = true;
+}
+
+$("stationpick").addEventListener("change", (e) => {
+  if (e.target.value) $("stationurl").value = e.target.value;
+});
+
+async function playStation(){
+  const url = $("stationurl").value.trim();
+  if (!url){ $("stationurl").focus(); return; }
+  try {
+    render(Object.assign({}, state, {
+      music: await post("/api/music", {action:"play", track:url})
+    }));
+  } catch (err) {
+    $("musicstate").textContent = "Ne mogu pustiti: " + err.message;
+  }
+}
+$("stationplay").addEventListener("click", playStation);
+$("stationurl").addEventListener("keydown", e => { if (e.key === "Enter") playStation(); });
+
+// ---- glasnoca glazbe ----
+// Klizac salje tek kad ga pustis (change), ne na svaki pomak (input) - inace
+// bi jedno povlacenje poslalo desetke zahtjeva. Brojka se osvjezava odmah.
+let volDirty = false;
+$("vol").addEventListener("input", () => {
+  volDirty = true;
+  $("volval").textContent = $("vol").value + " %";
+});
+$("vol").addEventListener("change", async () => {
+  try {
+    const m = await post("/api/music/volume", {volume: Number($("vol").value)});
+    render(Object.assign({}, state, {music: m}));
+  } catch (err) {
+    $("musicstate").textContent = "Glasnoća nije promijenjena: " + err.message;
+  } finally {
+    volDirty = false;
+  }
+});
+
+// ---- preset zvuk ----
+$("dingbtn").addEventListener("click", async () => {
+  try {
+    await post("/api/announce", {file:"dingdong.wav"});
+  } catch (err) {
+    $("saystate").textContent = "Ne mogu pustiti zvono: " + err.message;
+  }
+});
+
+// ---- snimanje najave ----
+// MediaRecorder ne zna snimati u WAV i svaki browser daje svoj kontejner
+// (Chrome webm, Firefox ogg, Safari mp4), pa se nastavak odredi iz stvarnog
+// tipa snimke. Razglas to svira preko mpv-a, koji cita sve navedeno.
+let recorder = null, recChunks = [], recTicker = null, recStarted = 0;
+
+function pickRecMime(){
+  if (!window.MediaRecorder) return null;
+  for (const m of ["audio/webm", "audio/ogg", "audio/mp4"])
+    if (MediaRecorder.isTypeSupported(m)) return m;
+  return "";
+}
+function extFor(mime){
+  if (mime.includes("webm")) return "webm";
+  if (mime.includes("ogg")) return "ogg";
+  if (mime.includes("mp4") || mime.includes("m4a")) return "m4a";
+  return "webm";
+}
+function recUi(on){
+  $("recrow").hidden = !on;
+  $("quick").hidden = on;
+}
+
+async function startRec(){
+  const mime = pickRecMime();
+  if (mime === null){
+    $("saystate").textContent = "Ovaj browser ne podržava snimanje (MediaRecorder).";
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio:true});
+  } catch (err) {
+    $("saystate").textContent = "Nema pristupa mikrofonu: " + err.message;
+    return;
+  }
+  recorder = new MediaRecorder(stream, mime ? {mimeType:mime} : undefined);
+  recChunks = [];
+  recorder.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
+  recorder.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    recUi(false);
+    clearInterval(recTicker);
+    await sendRec(new Blob(recChunks, {type:recorder.mimeType}));
+  };
+  recorder.start();
+  recStarted = Date.now();
+  recUi(true);
+  recTicker = setInterval(() => {
+    const s = Math.floor((Date.now() - recStarted) / 1000);
+    $("rectime").textContent = `Snimam… ${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+  }, 250);
+}
+
+async function sendRec(blob){
+  // Jedan poziv (/api/announce/clip) sprema i odmah najavi. Ime datoteke
+  // odreduje server, ovdje se salje samo nastavak jer od njega ovisi moze li
+  // ga mpv procitati.
+  const ext = extFor(blob.type || "audio/webm");
+  $("saystate").textContent = "Šaljem snimku…";
+  try {
+    const res = await fetch(`/api/announce/clip?ext=${ext}`, {
+      method:"POST",
+      headers:authHeaders({"Content-Type": blob.type || "application/octet-stream"}),
+      body:blob
+    });
+    if (!res.ok) throw new Error((await res.text()) || res.status);
+    $("saystate").textContent = "Snimka poslana na razglas.";
+  } catch (err) {
+    $("saystate").textContent = "Snimka nije poslana: " + err.message;
+  }
+}
+
+$("recbtn").addEventListener("click", startRec);
+$("recstop").addEventListener("click", () => {
+  if (recorder && recorder.state !== "inactive") recorder.stop();
+});
+
+// ---- slusanje prostorije ----
+let listenUrl = null;
+$("listenbtn").addEventListener("click", async () => {
+  const btn = $("listenbtn");
+  const secs = state && state.listen ? state.listen.clip_seconds : 10;
+  btn.disabled = true;
+  btn.textContent = "🎙 Snimam…";
+  $("listenstate").textContent = `Snimanje ${secs} s u tijeku…`;
+  try {
+    const res = await fetch("/api/listen", {method:"POST", headers:authHeaders()});
+    if (!res.ok) throw new Error((await res.text()) || res.status);
+    const blob = await res.blob();
+    if (listenUrl) URL.revokeObjectURL(listenUrl);   // inace svaka snimka ostaje u memoriji
+    listenUrl = URL.createObjectURL(blob);
+    const audio = document.createElement("audio");
+    audio.controls = true;
+    audio.src = listenUrl;
+    $("listenbox").replaceChildren(audio);
+    $("listenstate").textContent = "Snimljeno " + new Date().toLocaleTimeString("hr-HR");
+    audio.play().catch(() => {});
+  } catch (err) {
+    $("listenstate").textContent = "Snimanje nije uspjelo: " + err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = `🎧 Snimi ${secs} s`;
+  }
+});
 
 async function post(url, body){
   const res = await fetch(url, {

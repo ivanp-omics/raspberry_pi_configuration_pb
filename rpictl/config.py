@@ -65,9 +65,19 @@ class FanConfig(BaseModel):
 
 class AudioConfig(BaseModel):
     media_dir: str = "media"
-    player_cmd: list[str] = Field(default_factory=lambda: ["aplay", "-q"])
+    # mpv, a ne aplay: aplay cita samo WAV/PCM, a snimke iz browsera dolaze kao
+    # webm/ogg (MediaRecorder ne zna u WAV). mpv svira i jedno i drugo, pa nema
+    # potrebe za pretvaranjem formata na Pi-ju.
+    player_cmd: list[str] = Field(
+        default_factory=lambda: ["mpv", "--no-video", "--really-quiet"]
+    )
     tts_cmd: list[str] = Field(default_factory=lambda: ["espeak-ng", "-v", "hr"])
     sim_speak_rate_wps: float = 2.5
+
+
+class RadioStation(BaseModel):
+    name: str
+    url: str
 
 
 class MusicConfig(BaseModel):
@@ -76,6 +86,22 @@ class MusicConfig(BaseModel):
         default_factory=lambda: ["mpv", "--no-video", "--idle=yes", "--really-quiet"]
     )
     ipc_socket: str = "/tmp/rpictl-mpv.sock"
+    # Pocetna glasnoca glazbe. Namjerno ovdje, a ne kao --volume u player_cmd:
+    # sucelje je mijenja uzivo preko IPC-a, pa mora postojati jedno mjesto koje
+    # zna trenutnu vrijednost i vrati je ako se mpv proces ponovno pokrene.
+    volume: int = Field(default=40, ge=0, le=100)
+    # Preseti za gumbe u sucelju. .pls umjesto direktnog ice3/ice5 linka je
+    # namjerno: playlista sadrzi vise rezervnih servera pa mpv sam preskoci
+    # onaj koji ne radi, a SomaFM direktne hostove s vremenom mijenja.
+    stations: list[RadioStation] = Field(
+        default_factory=lambda: [
+            RadioStation(name="Groove Salad", url="https://somafm.com/groovesalad.pls"),
+            RadioStation(name="Beat Blender", url="https://somafm.com/beatblender.pls"),
+            RadioStation(name="PopTron", url="https://somafm.com/poptron.pls"),
+            RadioStation(name="Boot Liquor", url="https://somafm.com/bootliquor.pls"),
+            RadioStation(name="Radio Paradise", url="http://stream.radioparadise.com/mp3-192"),
+        ]
+    )
 
 
 class NetworkConfig(BaseModel):
@@ -89,6 +115,28 @@ class TelemetryConfig(BaseModel):
     retention_days: int = 30
 
 
+class ListenConfig(BaseModel):
+    """Snimanje kratkog isjecka prostorije ("sto se tamo dogada")."""
+
+    # Trajanje je fiksno i podesivo ovdje, a ne parametar iz zahtjeva: mikrofon
+    # je jedan, pa dugacko snimanje po tudjem zahtjevu blokira i uredaj i
+    # jednog radnika na serveru.
+    clip_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    device: str = "hw:0"
+    record_cmd: list[str] = Field(
+        default_factory=lambda: ["ffmpeg", "-nostdin", "-loglevel", "error"]
+    )
+    # Opus/Ogg jer je 10 s ~30 kB umjesto ~900 kB (WAV) - bitno kad isjecak
+    # putuje kroz WordPress proxy. Ako ffmpeg na uredaju nema libopus, ovdje
+    # se prebaci na: ["-ac", "1", "-c:a", "pcm_s16le"] + container "wav" +
+    # mime "audio/wav", bez ikakve izmjene koda.
+    codec_args: list[str] = Field(
+        default_factory=lambda: ["-ac", "1", "-c:a", "libopus", "-b:a", "24k"]
+    )
+    container: str = "ogg"
+    mime: str = "audio/ogg"
+
+
 class Config(BaseModel):
     simulate: bool = True
     sim_speed: float = 60.0
@@ -98,6 +146,7 @@ class Config(BaseModel):
     fan: FanConfig = Field(default_factory=FanConfig)
     audio: AudioConfig = Field(default_factory=AudioConfig)
     music: MusicConfig = Field(default_factory=MusicConfig)
+    listen: ListenConfig = Field(default_factory=ListenConfig)
     network: NetworkConfig = Field(default_factory=NetworkConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 

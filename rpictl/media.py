@@ -17,8 +17,10 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# aplay cita samo WAV/PCM. mpv preko ffmpega cita gotovo sve.
-ANNOUNCE_EXT = frozenset({".wav"})
+# Razglas svira preko mpv-a (vidi AudioConfig.player_cmd), koji cita sve ovo.
+# webm/ogg/m4a su tu jer MediaRecorder u browseru ne zna snimati u WAV - svaki
+# browser daje svoj kontejner (Chrome webm, Firefox ogg, Safari m4a).
+ANNOUNCE_EXT = frozenset({".wav", ".webm", ".ogg", ".m4a", ".opus", ".mp3"})
 MUSIC_EXT = frozenset({".mp3", ".wav", ".flac", ".ogg", ".m4a", ".opus"})
 MAX_BYTES = 25 * 1024 * 1024
 

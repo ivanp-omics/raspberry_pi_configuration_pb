@@ -11,7 +11,7 @@
   const root = document.getElementById("pibridge-panel");
   if (!cfg || !root) return;
 
-  const T_MIN = 15, T_MAX = 35;
+  const T_MIN = 0, T_MAX = 50;
   let state = null;
 
   root.innerHTML = `
@@ -28,7 +28,7 @@
         <div class="pibridge-window" id="pibridge-window"></div>
         <div class="pibridge-marker" id="pibridge-marker" style="left:50%"></div>
       </div>
-      <div class="pibridge-scale"><span>15 °C</span><span id="pibridge-thresholds">gasi -- / pali --</span><span>35 °C</span></div>
+      <div class="pibridge-scale"><span>0 °C</span><span id="pibridge-thresholds">gasi -- / pali --</span><span>50 °C</span></div>
     </div>
 
     <div class="pibridge-row">
@@ -56,6 +56,15 @@
         <input type="text" id="pibridge-saytext" placeholder="Tekst najave">
         <button type="button" id="pibridge-saybtn">Najavi</button>
       </div>
+      <div class="pibridge-quick" id="pibridge-quick">
+        <button type="button" id="pibridge-dingbtn">🔔 Ding dong</button>
+        <button type="button" id="pibridge-recbtn">⏺ Snimi</button>
+      </div>
+      <div class="pibridge-recrow" id="pibridge-recrow" hidden>
+        <span class="pibridge-recdot"></span>
+        <span class="pibridge-rectime" id="pibridge-rectime">Snimam… 0:00</span>
+        <button type="button" id="pibridge-recstop">■ Stani</button>
+      </div>
       <p class="pibridge-reason" id="pibridge-saystate">Red je prazan.</p>
     </div>
 
@@ -65,7 +74,33 @@
         <button type="button" id="pibridge-music-play">Pusti</button>
         <button type="button" id="pibridge-music-stop">Zaustavi</button>
       </div>
+
+      <div class="pibridge-volrow">
+        <label for="pibridge-vol">Glasnoća</label>
+        <input type="range" id="pibridge-vol" min="0" max="100" step="1" value="40">
+        <span class="pibridge-volval" id="pibridge-volval">40 %</span>
+      </div>
+
+      <div class="pibridge-say">
+        <select id="pibridge-stationpick">
+          <option value="">— odaberi postaju —</option>
+        </select>
+      </div>
+      <div class="pibridge-say">
+        <input type="text" id="pibridge-stationurl" placeholder="ili upiši adresu streama">
+        <button type="button" id="pibridge-stationplay">Pusti</button>
+      </div>
+
       <p class="pibridge-reason" id="pibridge-musicstate">Zaustavljeno.</p>
+    </div>
+
+    <div class="pibridge-row">
+      <h3>Slušanje prostorije</h3>
+      <div class="pibridge-quick">
+        <button type="button" id="pibridge-listenbtn">🎧 Snimi</button>
+      </div>
+      <div id="pibridge-listenbox"></div>
+      <p class="pibridge-reason" id="pibridge-listenstate">Snimi kratak isječak da čuješ što se tamo događa.</p>
     </div>
 
     <div class="pibridge-row">
@@ -166,6 +201,21 @@
       m.status === "ducked" ? "Pauzirano (najava)" :
       "Zaustavljeno.";
 
+    // Ne diraj klizac dok ga korisnik vuce - inace mu polling otme rucku
+    // ispod prsta i vrati je na staru vrijednost.
+    if (m.volume != null && !volDirty) {
+      $("pibridge-vol").value = m.volume;
+      $("pibridge-volval").textContent = m.volume + " %";
+    }
+
+    drawStations(s);
+
+    // Guard na disabled: polling se vrti i tijekom snimanja, pa bi bez njega
+    // natpis "Snimam..." odmah bio pregazen natrag na "Snimi 10 s".
+    if (s.listen && !$("pibridge-listenbtn").disabled) {
+      $("pibridge-listenbtn").textContent = `🎧 Snimi ${s.listen.clip_seconds} s`;
+    }
+
     $("pibridge-error").hidden = true;
     renderConn(true);
   }
@@ -249,6 +299,190 @@
   });
   $("pibridge-music-stop").addEventListener("click", () => {
     action(() => call("/music", { method: "POST", body: JSON.stringify({ action: "stop" }) }));
+  });
+
+  // -- radio postaje (preseti dolaze iz config.yaml na Piju) -------------
+  // Izbornik samo popuni polje s adresom; pusta se uvijek ono sto u polju
+  // pise, pa se moze i rucno upisati stream koji nije na popisu.
+
+  let stationsDrawn = false;
+  function drawStations(s) {
+    if (stationsDrawn || !s.stations) return;
+    const sel = $("pibridge-stationpick");
+    const prazna = document.createElement("option");
+    prazna.value = "";
+    prazna.textContent = "— odaberi postaju —";
+    sel.replaceChildren(prazna, ...s.stations.map(st => {
+      const o = document.createElement("option");
+      o.value = st.url;
+      o.textContent = st.name;
+      return o;
+    }));
+    stationsDrawn = true;
+  }
+
+  $("pibridge-stationpick").addEventListener("change", (e) => {
+    if (e.target.value) $("pibridge-stationurl").value = e.target.value;
+  });
+
+  function playStation() {
+    const url = $("pibridge-stationurl").value.trim();
+    if (!url) { $("pibridge-stationurl").focus(); return; }
+    action(() => call("/music", {
+      method: "POST",
+      body: JSON.stringify({ action: "play", track: url }),
+    }));
+  }
+  $("pibridge-stationplay").addEventListener("click", playStation);
+  $("pibridge-stationurl").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") playStation();
+  });
+
+  // -- glasnoca glazbe ----------------------------------------------------
+  // Salje se na "change" (kad pustis rucku), ne na "input" - inace jedno
+  // povlacenje posalje desetke zahtjeva, a svaki drzi PHP radnika.
+
+  let volDirty = false;
+  $("pibridge-vol").addEventListener("input", () => {
+    volDirty = true;
+    $("pibridge-volval").textContent = $("pibridge-vol").value + " %";
+  });
+  $("pibridge-vol").addEventListener("change", async () => {
+    try {
+      await call("/music-volume", {
+        method: "POST",
+        body: JSON.stringify({ volume: Number($("pibridge-vol").value) }),
+      });
+      await refresh();
+    } catch (err) {
+      showError(err);
+    } finally {
+      volDirty = false;
+    }
+  });
+
+  // -- preset zvuk --------------------------------------------------------
+
+  $("pibridge-dingbtn").addEventListener("click", () => {
+    action(() => call("/announce", {
+      method: "POST",
+      body: JSON.stringify({ file: "dingdong.wav" }),
+    }));
+  });
+
+  // -- snimanje najave ----------------------------------------------------
+  // Isti obrazac kao index.html: MediaRecorder ne zna u WAV, pa se nastavak
+  // odredi iz stvarnog tipa snimke (Chrome webm, Firefox ogg, Safari mp4).
+
+  let recorder = null, recChunks = [], recTicker = null, recStarted = 0;
+
+  function pickRecMime() {
+    if (!window.MediaRecorder) return null;
+    for (const m of ["audio/webm", "audio/ogg", "audio/mp4"]) {
+      if (MediaRecorder.isTypeSupported(m)) return m;
+    }
+    return "";
+  }
+  function extFor(mime) {
+    if (mime.includes("webm")) return "webm";
+    if (mime.includes("ogg")) return "ogg";
+    if (mime.includes("mp4") || mime.includes("m4a")) return "m4a";
+    return "webm";
+  }
+  function recUi(on) {
+    $("pibridge-recrow").hidden = !on;
+    $("pibridge-quick").hidden = on;
+  }
+
+  async function startRec() {
+    const mime = pickRecMime();
+    if (mime === null) {
+      $("pibridge-saystate").textContent = "Ovaj browser ne podržava snimanje (MediaRecorder).";
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      $("pibridge-saystate").textContent = "Nema pristupa mikrofonu: " + err.message;
+      return;
+    }
+    recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    recChunks = [];
+    recorder.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
+    recorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      recUi(false);
+      clearInterval(recTicker);
+      await sendRec(new Blob(recChunks, { type: recorder.mimeType }));
+    };
+    recorder.start();
+    recStarted = Date.now();
+    recUi(true);
+    recTicker = setInterval(() => {
+      const s = Math.floor((Date.now() - recStarted) / 1000);
+      $("pibridge-rectime").textContent =
+        `Snimam… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    }, 250);
+  }
+
+  async function sendRec(blob) {
+    const ext = extFor(blob.type || "audio/webm");
+    $("pibridge-saystate").textContent = "Šaljem snimku…";
+    try {
+      const res = await fetch(`${cfg.restUrl}/announce-clip?ext=${ext}`, {
+        method: "POST",
+        headers: {
+          "X-WP-Nonce": cfg.nonce,
+          "Content-Type": blob.type || "application/octet-stream",
+        },
+        body: blob,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error((body && body.message) || "Snimka nije poslana.");
+      }
+      $("pibridge-saystate").textContent = "Snimka poslana na razglas.";
+      await refresh();
+    } catch (err) {
+      $("pibridge-saystate").textContent = "Snimka nije poslana: " + err.message;
+    }
+  }
+
+  $("pibridge-recbtn").addEventListener("click", startRec);
+  $("pibridge-recstop").addEventListener("click", () => {
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  });
+
+  // -- slusanje prostorije ------------------------------------------------
+  // Audio dolazi kao base64 u JSON-u (vidi pibridge_audio_request u PHP-u),
+  // pa se ovdje pretvara natrag u Blob za <audio> element.
+
+  let listenUrl = null;
+  $("pibridge-listenbtn").addEventListener("click", async () => {
+    const btn = $("pibridge-listenbtn");
+    const secs = (state && state.listen) ? state.listen.clip_seconds : 10;
+    btn.disabled = true;
+    btn.textContent = "🎙 Snimam…";
+    $("pibridge-listenstate").textContent = `Snimanje ${secs} s u tijeku…`;
+    try {
+      const out = await call("/listen", { method: "POST" });
+      const bin = Uint8Array.from(atob(out.audio_base64), ch => ch.charCodeAt(0));
+      if (listenUrl) URL.revokeObjectURL(listenUrl);
+      listenUrl = URL.createObjectURL(new Blob([bin], { type: out.mime }));
+      const audio = document.createElement("audio");
+      audio.controls = true;
+      audio.src = listenUrl;
+      $("pibridge-listenbox").replaceChildren(audio);
+      $("pibridge-listenstate").textContent =
+        "Snimljeno " + new Date().toLocaleTimeString("hr-HR");
+      audio.play().catch(() => {});
+    } catch (err) {
+      $("pibridge-listenstate").textContent = "Snimanje nije uspjelo: " + err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = `🎧 Snimi ${secs} s`;
+    }
   });
 
   // -- polling s backoffom ---------------------------------------------

@@ -6,6 +6,15 @@ data/*.sqlite
 data/*.sqlite-journal
 .venv/
 
+# Runtime medijske datoteke (ono sto se uploada preko /api/media) su podaci
+# uredaja, ne kod - u git ide samo isporuceni preset zvuk i cuvari praznih mapa.
+media/*
+!media/.gitkeep
+!media/dingdong.wav
+!media/music
+media/music/*
+!media/music/.gitkeep
+
 # Zapakirani plugin za WordPress - artefakt koji zastari cim se plugin dirne.
 wordpress-plugin/*.zip
 

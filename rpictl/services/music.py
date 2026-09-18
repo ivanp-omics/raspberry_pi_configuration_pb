@@ -35,6 +35,10 @@ class MusicService:
         await self._music.stop()
         self._bus.publish(EV_MUSIC, {"state": "stopped", "track": None})
 
+    async def set_volume(self, level: int) -> None:
+        await self._music.set_volume(level)
+        self._bus.publish(EV_MUSIC, {"state": "volume", "volume": self._music.volume})
+
     async def run(self) -> None:
         q = self._bus.subscribe()
         try:
@@ -65,4 +69,8 @@ class MusicService:
             status = "playing"
         else:
             status = "stopped"
-        return {"status": status, "track": self._music.current_track}
+        return {
+            "status": status,
+            "track": self._music.current_track,
+            "volume": self._music.volume,
+        }

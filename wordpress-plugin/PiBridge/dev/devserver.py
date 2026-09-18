@@ -18,12 +18,17 @@ Zaustavljanje: Ctrl+C
 
 from __future__ import annotations
 
+import base64
+import io
 import json
 import math
 import random
+import struct
+import threading
 import time
 import urllib.error
 import urllib.request
+import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -54,7 +59,7 @@ def load_piconf() -> dict | None:
 
 _mock = {
     "mode": "auto", "fan_on": True, "music": "stopped", "track": None,
-    "pending": 0, "playing": None,
+    "pending": 0, "playing": None, "volume": 40,
 }
 
 
@@ -80,9 +85,55 @@ def mock_status() -> dict:
             "thresholds": {"on_c": 35.0, "off_c": 32.0},
         },
         "announcer": {"pending": _mock["pending"], "playing": _mock["playing"]},
-        "music": {"status": _mock["music"], "track": _mock["track"]},
+        "music": {
+            "status": _mock["music"],
+            "track": _mock["track"],
+            "volume": _mock["volume"],
+        },
         "telemetry": {},
+        "stations": [
+            {"name": "Groove Salad", "url": "https://somafm.com/groovesalad.pls"},
+            {"name": "Beat Blender", "url": "https://somafm.com/beatblender.pls"},
+            {"name": "PopTron", "url": "https://somafm.com/poptron.pls"},
+        ],
+        "listen": {"clip_seconds": 10.0, "mime": "audio/wav"},
     }
+
+
+def mock_announce(label: str | None) -> dict:
+    """Odglumi najavu: kratko "svira", pa se red sam isprazni.
+
+    Bez ovog praznjenja brojac u panelu raste zauvijek (1, 2, 3...) i izgleda
+    kao da se najava zaglavila - pravi AnnouncerService na Piju red isprazni
+    cim reprodukcija zavrsi.
+    """
+    _mock["pending"] += 1
+    _mock["playing"] = label
+
+    def gotovo() -> None:
+        _mock["pending"] = max(0, _mock["pending"] - 1)
+        if _mock["pending"] == 0:
+            _mock["playing"] = None
+
+    threading.Timer(2.5, gotovo).start()
+    return {"id": "mock", "pending": _mock["pending"]}
+
+
+def mock_clip_wav(seconds: float = 3.0) -> bytes:
+    """Kratak WAV sa slabim sumom - da <audio> u pregledu ima sto pustiti."""
+    rate = 16000
+    frames = bytearray()
+    for i in range(int(seconds * rate)):
+        t = i / rate
+        value = 0.012 * math.sin(2.0 * math.pi * 50.0 * t) + random.uniform(-0.02, 0.02)
+        frames += struct.pack("<h", int(max(-1.0, min(1.0, value)) * 32767))
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as fh:
+        fh.setnchannels(1)
+        fh.setsampwidth(2)
+        fh.setframerate(rate)
+        fh.writeframes(bytes(frames))
+    return buf.getvalue()
 
 
 def mock_history() -> list[dict]:
@@ -109,7 +160,9 @@ def mock_network() -> dict:
 
 # -- stvarni Pi (server-to-server, kao pibridge_request() u pibridge.php) --
 
-def pi_request(cfg: dict, method: str, endpoint: str, body: dict | None = None) -> tuple[int, bytes]:
+def pi_request(
+    cfg: dict, method: str, endpoint: str, body: dict | None = None, timeout: float = 5.0
+) -> tuple[int, bytes]:
     url = cfg["pi_url"].rstrip("/") + endpoint
     data = json.dumps(body or {}).encode("utf-8") if method == "POST" else None
     req = urllib.request.Request(url, data=data, method=method)
@@ -117,13 +170,31 @@ def pi_request(cfg: dict, method: str, endpoint: str, body: dict | None = None) 
     if data is not None:
         req.add_header("Content-Type", "application/json")
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status, resp.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read()
     except urllib.error.URLError as exc:
         msg = json.dumps({"message": f"Ne mogu se spojiti na Pi: {exc.reason}"}).encode("utf-8")
         return 502, msg
+
+
+def pi_request_raw(
+    cfg: dict, endpoint: str, raw: bytes, content_type: str
+) -> tuple[int, bytes]:
+    """Proslijedi sirovo tijelo (snimku) Pi-ju - bez JSON omotaca."""
+    req = urllib.request.Request(
+        cfg["pi_url"].rstrip("/") + endpoint, data=raw, method="POST"
+    )
+    req.add_header("X-Api-Key", cfg.get("api_token", ""))
+    req.add_header("Content-Type", content_type)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read()
+    except urllib.error.URLError as exc:
+        return 502, json.dumps({"message": f"Ne mogu se spojiti na Pi: {exc.reason}"}).encode()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -149,7 +220,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+    # Imena do_GET/do_POST propisuje BaseHTTPRequestHandler.
+    def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
         cfg = load_piconf()
 
@@ -178,12 +250,46 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_error(404)
 
-    def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+    def do_POST(self) -> None:
         path = self.path.split("?", 1)[0]
         length = int(self.headers.get("Content-Length", 0) or 0)
-        raw = self.rfile.read(length) if length else b"{}"
-        req_body = json.loads(raw or b"{}")
+        raw = self.rfile.read(length) if length else b""
         cfg = load_piconf()
+
+        # Ove dvije rute nose sirov audio / nemaju tijelo, pa se ne parsiraju
+        # kao JSON - moraju prije json.loads() ispod.
+        if path == "/dev-api/listen":
+            if cfg:
+                # Timeout mora nadzivjeti trajanje snimke (Pi drzi vezu dok snima).
+                status, body = pi_request(cfg, "POST", "/api/listen", timeout=45.0)
+                if status != 200:
+                    return self._json(status, body)
+                return self._json(200, {
+                    "mime": "audio/ogg",
+                    "bytes": len(body),
+                    "audio_base64": base64.b64encode(body).decode("ascii"),
+                })
+            clip = mock_clip_wav()
+            return self._json(200, {
+                "mime": "audio/wav",
+                "bytes": len(clip),
+                "audio_base64": base64.b64encode(clip).decode("ascii"),
+            })
+
+        if path == "/dev-api/announce-clip":
+            ext = "webm"
+            if "?" in self.path and "ext=" in self.path:
+                ext = self.path.split("ext=", 1)[1].split("&", 1)[0] or "webm"
+            if cfg:
+                url = f"/api/announce/clip?ext={ext}"
+                status, body = pi_request_raw(
+                    cfg, url, raw, self.headers.get("Content-Type", "application/octet-stream")
+                )
+                return self._json(status, body)
+            out = mock_announce(f"snimka-razglas.{ext}")
+            return self._json(200, {**out, "saved": f"snimka-razglas.{ext}"})
+
+        req_body = json.loads(raw or b"{}")
 
         if path == "/dev-api/fan":
             if cfg:
@@ -200,9 +306,18 @@ class Handler(BaseHTTPRequestHandler):
             if cfg:
                 status, body = pi_request(cfg, "POST", "/api/announce", req_body)
                 return self._json(status, body)
-            _mock["pending"] += 1
-            _mock["playing"] = req_body.get("text")
-            return self._json(200, {"id": "mock", "pending": _mock["pending"]})
+            # Ding dong salje {"file": ...}, tipkana najava {"text": ...} -
+            # prikazi ono sto je stiglo, inace panel ne zna sto svira.
+            return self._json(
+                200, mock_announce(req_body.get("text") or req_body.get("file"))
+            )
+
+        if path == "/dev-api/music-volume":
+            if cfg:
+                status, body = pi_request(cfg, "POST", "/api/music/volume", req_body)
+                return self._json(status, body)
+            _mock["volume"] = max(0, min(100, int(req_body.get("volume", 40))))
+            return self._json(200, mock_status()["music"])
 
         if path == "/dev-api/music":
             if cfg:

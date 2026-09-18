@@ -14,6 +14,10 @@ class SensorError(RuntimeError):
     """Senzor nije uspio dati ocitanje. Servisi ovo hvataju i ne padaju."""
 
 
+class MicRecordError(RuntimeError):
+    """Snimanje s mikrofona nije uspjelo - zauzet uredaj, nema ffmpega, prazna snimka."""
+
+
 @dataclass(frozen=True, slots=True)
 class Reading:
     """Jedno ocitanje senzora. ts je vrijeme po Clock-u, ne po time.time()."""

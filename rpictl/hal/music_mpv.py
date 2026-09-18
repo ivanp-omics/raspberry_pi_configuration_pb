@@ -38,6 +38,7 @@ class MpvMusicPlayer:
         self._playing = False
         self._paused_track: str | None = None
         self._paused_pos: float | None = None
+        self._volume = cfg.volume
 
     @property
     def is_playing(self) -> bool:
@@ -46,6 +47,14 @@ class MpvMusicPlayer:
     @property
     def current_track(self) -> str | None:
         return self._track
+
+    @property
+    def volume(self) -> int:
+        return self._volume
+
+    async def set_volume(self, level: int) -> None:
+        self._volume = max(0, min(100, int(level)))
+        await self._send(["set_property", "volume", self._volume])
 
     async def _ensure_started(self) -> None:
         if self._proc is not None and self._proc.returncode is None:
@@ -62,6 +71,10 @@ class MpvMusicPlayer:
             return
         for _ in range(50):  # do 5 s da mpv otvori IPC socket
             if sock.exists():
+                # Svjez mpv proces krece od svoje zadane glasnoce, pa se ovdje
+                # vraca zadnja postavljena - inace bi restart mpv-a (pad, prvo
+                # pustanje nakon close()) tiho vratio zvuk na 100 %.
+                await self._send(["set_property", "volume", self._volume])
                 return
             await asyncio.sleep(0.1)
         log.error("mpv nije otvorio IPC socket %s", sock)

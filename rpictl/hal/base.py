@@ -65,6 +65,13 @@ class MusicPlayer(Protocol):
     @property
     def current_track(self) -> str | None: ...
 
+    @property
+    def volume(self) -> int: ...
+
+    async def set_volume(self, level: int) -> None:
+        """0-100. Mijenja se uzivo, bez prekida reprodukcije."""
+        ...
+
     async def play(self, track: str | None = None) -> None:
         """track=None pusta cijeli media_dir, promijesan i u petlji."""
         ...
@@ -74,6 +81,24 @@ class MusicPlayer(Protocol):
     async def resume(self) -> None: ...
 
     async def stop(self) -> None: ...
+
+    async def close(self) -> None: ...
+
+
+@runtime_checkable
+class MicRecorder(Protocol):
+    """Kratki isjecak s mikrofona - "sto se sad dogada u prostoriji".
+
+    Vraca gotove bajtove audio datoteke, ne tok: trajanje je unaprijed
+    odredeno konfiguracijom, pa pozivatelj ne mora upravljati sesijom.
+    """
+
+    @property
+    def mime(self) -> str:
+        """Tip snimke koju ovaj snimac vraca - lazni daje WAV, pravi Opus/Ogg."""
+        ...
+
+    async def record(self, seconds: float) -> bytes: ...
 
     async def close(self) -> None: ...
 

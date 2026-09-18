@@ -13,10 +13,11 @@ log = logging.getLogger(__name__)
 
 
 class FakeMusicPlayer:
-    def __init__(self) -> None:
+    def __init__(self, volume: int = 40) -> None:
         self._playing = False
         self._track: str | None = None
         self._paused_at: str | None = None
+        self._volume = volume
 
     @property
     def is_playing(self) -> bool:
@@ -25,6 +26,14 @@ class FakeMusicPlayer:
     @property
     def current_track(self) -> str | None:
         return self._track
+
+    @property
+    def volume(self) -> int:
+        return self._volume
+
+    async def set_volume(self, level: int) -> None:
+        self._volume = max(0, min(100, int(level)))
+        log.info("glazba: glasnoca %d %%", self._volume)
 
     async def play(self, track: str | None = None) -> None:
         self._track = track or "(mapa media/music, izmijesano)"

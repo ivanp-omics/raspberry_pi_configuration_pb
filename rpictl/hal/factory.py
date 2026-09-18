@@ -14,6 +14,7 @@ from ..config import Config
 from .base import (
     AudioPlayer,
     FanControl,
+    MicRecorder,
     MusicPlayer,
     NetworkScanner,
     TemperatureSensor,
@@ -28,11 +29,12 @@ class Hal:
     fan: FanControl
     audio: AudioPlayer
     music: MusicPlayer
+    mic: MicRecorder
     scanner: NetworkScanner
     simulated: bool
 
     async def close(self) -> None:
-        for dev in (self.sensor, self.audio, self.music, self.scanner, self.fan):
+        for dev in (self.sensor, self.audio, self.music, self.mic, self.scanner, self.fan):
             try:
                 await dev.close()
             except Exception:  # noqa: BLE001 - gasenje ne smije pasti
@@ -42,6 +44,7 @@ class Hal:
 def build_hal(cfg: Config, clock: Clock) -> Hal:
     if cfg.simulate:
         from .audio_fake import FakeAudioPlayer
+        from .mic_fake import FakeMicRecorder
         from .music_fake import FakeMusicPlayer
         from .netscan_fake import FakeNetworkScanner
         from .relay_fake import FakeFan
@@ -56,12 +59,14 @@ def build_hal(cfg: Config, clock: Clock) -> Hal:
             sensor=sensor,
             fan=fan,
             audio=FakeAudioPlayer(clock, cfg.audio.sim_speak_rate_wps),
-            music=FakeMusicPlayer(),
+            music=FakeMusicPlayer(cfg.music.volume),
+            mic=FakeMicRecorder(clock),
             scanner=FakeNetworkScanner(),
             simulated=True,
         )
 
     from .audio_alsa import AlsaAudioPlayer
+    from .mic_ffmpeg import FfmpegMicRecorder
     from .music_mpv import MpvMusicPlayer
     from .netscan_arp import ArpNetworkScanner
     from .relay_gpio import GpioRelayFan
@@ -73,6 +78,7 @@ def build_hal(cfg: Config, clock: Clock) -> Hal:
         fan=GpioRelayFan(clock, cfg.fan),
         audio=AlsaAudioPlayer(cfg.audio),
         music=MpvMusicPlayer(cfg.music),
+        mic=FfmpegMicRecorder(cfg.listen),
         scanner=ArpNetworkScanner(cfg.network),
         simulated=False,
     )

@@ -13,7 +13,7 @@ echo "== [1/9] apt packages =="
 sudo apt-get update -q
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q \
   git curl python3 python3-venv python3-pip \
-  alsa-utils espeak-ng mpv i2c-tools \
+  alsa-utils espeak-ng mpv ffmpeg i2c-tools \
   python3-gpiozero python3-lgpio python3-smbus2
 
 echo "== [2/9] tailscale check =="

@@ -18,6 +18,8 @@ from fastapi import (
     File,
     Header,
     HTTPException,
+    Request,
+    Response,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
@@ -31,7 +33,7 @@ from .clock import build_clock
 from .config import Config, load_config
 from .hal.factory import build_hal
 from .media import MAX_BYTES, MediaError, MediaLibrary
-from .models import FanMode, Priority
+from .models import FanMode, MicRecordError, Priority
 from .services.announcer import AnnouncerService
 from .services.climate import ClimateService
 from .services.inventory import InventoryService
@@ -59,6 +61,10 @@ class AnnounceRequest(BaseModel):
 class MusicRequest(BaseModel):
     action: Literal["play", "stop"]
     track: str | None = None
+
+
+class VolumeRequest(BaseModel):
+    volume: int = Field(ge=0, le=100)
 
 
 class FaultRequest(BaseModel):
@@ -121,6 +127,14 @@ class Runtime:
                 k: v for k, v in self.inventory.snapshot().items() if k != "hosts"
             },
             "telemetry": self.telemetry.snapshot(),
+            # Preseti i trajanje isjecka dolaze iz konfiguracije, a ne iz
+            # frontenda: inace bi popis postaja trebalo drzati usklađen na dva
+            # mjesta (index.html i WordPress plugin) i neizbjezno bi se razisao.
+            "stations": [s.model_dump() for s in self.cfg.music.stations],
+            "listen": {
+                "clip_seconds": self.cfg.listen.clip_seconds,
+                "mime": self.hal.mic.mime,
+            },
         }
 
 
@@ -193,6 +207,42 @@ def create_app(config_path: str = "config.yaml") -> FastAPI:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {"id": ann.id, "pending": rt().announcer.pending}
 
+    @app.post("/api/announce/clip", dependencies=[Depends(require_token)])
+    async def announce_clip(
+        request: Request,
+        ext: str = "webm",
+        priority: Priority = Priority.NORMAL,
+    ) -> dict:
+        """Snimka s mikrofona u browseru: spremi i odmah najavi, jednim pozivom.
+
+        Tijelo je sirov audio, ne multipart - tako isti poziv moze proslijediti
+        i WordPress proxy, koji multipart ne sastavlja bez muke. Ime datoteke
+        se ne prima izvana nego je fiksno i rotira: snimka najave je potrosna,
+        a datoteke koje se nigdje u sucelju ne vide bi tiho punile karticu.
+        """
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > MAX_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"snimka prelazi {MAX_BYTES // 1024 // 1024} MB",
+                )
+            chunks.append(chunk)
+
+        try:
+            # Ide kroz MediaLibrary da se ponovno iskoriste provjere imena,
+            # nastavka i velicine - nema druge kopije te logike.
+            name = rt().media.save(
+                "announce", f"snimka-razglas.{ext}", b"".join(chunks)
+            )
+        except MediaError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        ann = rt().announcer.enqueue(text=None, path=name, priority=priority)
+        return {"id": ann.id, "saved": name, "pending": rt().announcer.pending}
+
     @app.post("/api/music", dependencies=[Depends(require_token)])
     async def music(req: MusicRequest) -> dict:
         if req.action == "play":
@@ -200,6 +250,31 @@ def create_app(config_path: str = "config.yaml") -> FastAPI:
         else:
             await rt().music.stop()
         return rt().music.snapshot()
+
+    @app.post("/api/music/volume", dependencies=[Depends(require_token)])
+    async def music_volume(req: VolumeRequest) -> dict:
+        """Samo glazba. Govor i alarmi namjerno ostaju na punoj glasnoci -
+        najava koju netko moze utisati nije najava."""
+        await rt().music.set_volume(req.volume)
+        return rt().music.snapshot()
+
+    # -- slusanje prostorije ------------------------------------------------
+
+    # Mikrofon je jedan fizicki uredaj: dva paralelna snimanja bi se borila za
+    # njega i oba bi pukla. Lock pretvara to u jasan 409 umjesto zbunjujuce
+    # ffmpeg greske.
+    listen_lock = asyncio.Lock()
+
+    @app.post("/api/listen", dependencies=[Depends(require_token)])
+    async def listen() -> Response:
+        if listen_lock.locked():
+            raise HTTPException(status_code=409, detail="snimanje je vec u tijeku")
+        async with listen_lock:
+            try:
+                data = await rt().hal.mic.record(rt().cfg.listen.clip_seconds)
+            except MicRecordError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return Response(content=data, media_type=rt().hal.mic.mime)
 
     # -- datoteke za razglas i glazbu ---------------------------------------
 

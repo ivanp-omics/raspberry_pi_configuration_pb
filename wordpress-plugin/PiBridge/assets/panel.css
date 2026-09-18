@@ -16,6 +16,11 @@
   color: var(--pb-ink);
 }
 
+/* Mora ici s !important: klasa koja postavi display (.pibridge-recrow)
+   inace nadjaca preglednikovo ugradeno [hidden]{display:none}, pa atribut
+   hidden tiho prestane raditi. */
+.pibridge-panel [hidden] { display: none !important; }
+
 .pibridge-panel .pibridge-conn {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 12px;
@@ -123,6 +128,70 @@
   background: var(--pb-ink);
   color: #fff;
   cursor: default;
+}
+
+/* ---- brze radnje i radio postaje ---- */
+.pibridge-panel .pibridge-quick {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+}
+.pibridge-panel .pibridge-quick button {
+  padding: 7px 12px;
+  border: 1px solid var(--pb-line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--pb-ink);
+  cursor: pointer;
+  font-size: 13px;
+}
+.pibridge-panel .pibridge-quick button:hover:not(:disabled) { background: #f4f7f8; }
+.pibridge-panel .pibridge-quick button:disabled { opacity: .5; cursor: default; }
+.pibridge-panel .pibridge-quick button[aria-pressed="true"] {
+  background: var(--pb-audio); border-color: var(--pb-audio); color: #fff;
+}
+
+/* ---- glasnoca i odabir postaje ---- */
+.pibridge-panel .pibridge-volrow {
+  display: flex; align-items: center; gap: 10px; margin-top: 10px;
+}
+.pibridge-panel .pibridge-volrow label {
+  font-size: 13px; color: var(--pb-muted); flex: none;
+}
+.pibridge-panel .pibridge-volrow input[type="range"] {
+  flex: 1; min-width: 0; accent-color: var(--pb-audio); padding: 0;
+}
+.pibridge-panel .pibridge-volval {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px; color: var(--pb-muted); flex: none;
+  width: 44px; text-align: right;
+}
+.pibridge-panel select {
+  flex: 1; min-width: 0; padding: 8px 10px;
+  border: 1px solid var(--pb-line); border-radius: 6px;
+  background: #fff; color: var(--pb-ink); font-size: 14px;
+}
+
+/* ---- snimanje ---- */
+.pibridge-panel .pibridge-recrow {
+  display: flex; align-items: center; gap: 10px; margin-top: 8px;
+}
+.pibridge-panel .pibridge-recdot {
+  width: 12px; height: 12px; border-radius: 50%; background: var(--pb-alarm);
+  flex: none; animation: pibridge-pulse 1.4s ease-in-out infinite;
+}
+@keyframes pibridge-pulse { 50% { opacity: .25; } }
+.pibridge-panel .pibridge-rectime {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums; font-weight: 500; flex: 1;
+}
+.pibridge-panel .pibridge-recrow button {
+  padding: 7px 14px; border: 0; border-radius: 6px;
+  background: var(--pb-alarm); color: #fff; cursor: pointer; font-size: 13px;
+}
+.pibridge-panel audio { width: 100%; margin-top: 8px; display: block; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pibridge-panel .pibridge-recdot { animation: none; }
 }
 
 /* ---- razglas / unos ---- */

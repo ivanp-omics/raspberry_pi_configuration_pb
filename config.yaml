@@ -50,7 +50,9 @@ fan:
 
 audio:
   media_dir: "media"
-  player_cmd: ["aplay", "-q"]
+  # mpv, ne aplay: aplay cita samo WAV, a snimke iz browsera dolaze kao
+  # webm/ogg/m4a (MediaRecorder ne zna u WAV).
+  player_cmd: ["mpv", "--no-video", "--really-quiet"]
   tts_cmd: ["espeak-ng", "-v", "hr", "-s", "150"]
   sim_speak_rate_wps: 2.5   # koliko rijeci u sekundi "govori" lazni player
 
@@ -58,6 +60,24 @@ music:
   media_dir: "media/music"
   player_cmd: ["mpv", "--no-video", "--idle=yes", "--really-quiet"]
   ipc_socket: "/tmp/rpictl-mpv.sock"
+  volume: 40              # pocetna glasnoca glazbe; sucelje je mijenja uzivo
+  # Preseti za radio u sucelju (padajuci izbornik). .pls umjesto direktnog linka: playlista sadrzi
+  # rezervne servere pa mpv preskoci onaj koji ne radi.
+  stations:
+    - name: "Groove Salad"
+      url: "https://somafm.com/groovesalad.pls"
+    - name: "Beat Blender"
+      url: "https://somafm.com/beatblender.pls"
+    - name: "PopTron"
+      url: "https://somafm.com/poptron.pls"
+    - name: "Boot Liquor"
+      url: "https://somafm.com/bootliquor.pls"
+    - name: "Radio Paradise"
+      url: "http://stream.radioparadise.com/mp3-192"
+
+listen:
+  clip_seconds: 10        # trajanje isjecka "slusaj prostoriju" (1-60)
+  device: "hw:0"          # ista USB kartica kao razglas, samo ulaz
 
 network:
   scan_interval_s: 300
