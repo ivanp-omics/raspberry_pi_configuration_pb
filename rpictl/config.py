@@ -122,10 +122,19 @@ class ListenConfig(BaseModel):
     # je jedan, pa dugacko snimanje po tudjem zahtjevu blokira i uredaj i
     # jednog radnika na serveru.
     clip_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
-    device: str = "hw:0"
+    # plughw:, a ne hw: - "hw" je sirovi uredaj i trazi tocno one parametre
+    # koje cip podrzava, pa jeftina USB kartica s mono ulazom odbije ffmpegov
+    # zadani stereo ("cannot set channel count to 2"). "plughw" ubacuje ALSA
+    # konverzijski sloj koji to posreduje, isto kao sto `arecord default` radi.
+    device: str = "plughw:0"
     record_cmd: list[str] = Field(
         default_factory=lambda: ["ffmpeg", "-nostdin", "-loglevel", "error"]
     )
+    # Idu PRIJE -i, pa vrijede za otvaranje uredaja (za razliku od codec_args
+    # ispod, koji vrijede za kodiranje). Na spremistu plughw svejedno otvori
+    # stereo i sam posreduje, pa je ovo samo nagovjestaj za uredaje koji ga
+    # postuju - ne oslanjaj se na njega, "plughw" je ono sto stvarno rjesava.
+    input_args: list[str] = Field(default_factory=lambda: ["-ac", "1"])
     # Opus/Ogg jer je 10 s ~30 kB umjesto ~900 kB (WAV) - bitno kad isjecak
     # putuje kroz WordPress proxy. Ako ffmpeg na uredaju nema libopus, ovdje
     # se prebaci na: ["-ac", "1", "-c:a", "pcm_s16le"] + container "wav" +

@@ -6,7 +6,7 @@ koda. Na uredaju "spremiste" mikrofon je na istoj USB kartici kao i izlaz
 (C-Media, card 0) - snimanje i pustanje su odvojeni ALSA smjerovi.
 
 Rucna provjera iste stvari koju radi ovaj modul:
-    ffmpeg -nostdin -f alsa -i hw:0 -t 10 -ac 1 -c:a libopus -f ogg out.ogg
+    ffmpeg -nostdin -f alsa -ac 1 -i plughw:0 -t 5 -c:a libopus -f ogg out.ogg
 """
 
 from __future__ import annotations
@@ -34,9 +34,10 @@ class FfmpegMicRecorder:
         return [
             *self._cfg.record_cmd,
             "-f", "alsa",
+            *self._cfg.input_args,     # prije -i: kako se uredaj OTVARA
             "-i", self._cfg.device,
             "-t", f"{seconds:.2f}",
-            *self._cfg.codec_args,
+            *self._cfg.codec_args,     # poslije -i: kako se snimka KODIRA
             "-f", self._cfg.container,
             "pipe:1",
         ]

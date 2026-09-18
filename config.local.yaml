@@ -57,7 +57,8 @@ music:
 
 listen:
   clip_seconds: 10        # trajanje isjecka "slusaj prostoriju" (1-60)
-  device: "hw:0"          # ista USB kartica kao razglas (C-Media), samo ulaz
+  device: "plughw:0"      # ista USB kartica kao razglas (C-Media), samo ulaz
+                          # "plughw" (ne "hw") jer ulaz je mono, a ffmpeg trazi stereo
 
 network:
   scan_interval_s: 300
