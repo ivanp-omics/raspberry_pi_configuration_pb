@@ -97,6 +97,7 @@ def mock_status() -> dict:
             {"name": "PopTron", "url": "https://somafm.com/poptron.pls"},
         ],
         "listen": {"clip_seconds": 10.0, "mime": "audio/wav"},
+        "system": {"cpu_temp_c": 52.4, "warn_c": 70.0, "throttle_c": 80.0},
     }
 
 

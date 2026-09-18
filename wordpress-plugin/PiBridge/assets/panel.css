@@ -100,7 +100,9 @@
 .pibridge-panel .pibridge-reason.bad { color: var(--pb-alarm); font-weight: 500; }
 
 /* ---- graf ---- */
-.pibridge-panel svg.pibridge-spark { width: 100%; height: 100px; display: block; }
+/* height:auto - visina slijedi omjer iz viewBoxa; fiksna bi uz ocuvanje
+   omjera (potrebno zbog slova na osima) ostavila praznine sa strane. */
+.pibridge-panel svg.pibridge-spark { width: 100%; height: auto; display: block; }
 .pibridge-panel .pibridge-spark-empty {
   color: var(--pb-muted); font-size: 13px; padding: 20px 0; text-align: center;
 }
@@ -148,6 +150,14 @@
 .pibridge-panel .pibridge-quick button[aria-pressed="true"] {
   background: var(--pb-audio); border-color: var(--pb-audio); color: #fff;
 }
+.pibridge-panel .pibridge-quick button.pibridge-danger {
+  border-color: var(--pb-alarm); color: var(--pb-alarm); font-weight: 600;
+}
+.pibridge-panel .pibridge-quick button.pibridge-danger:hover:not(:disabled) {
+  background: var(--pb-alarm); color: #fff;
+}
+.pibridge-panel .pibridge-warm { color: var(--pb-fan); font-weight: 600; }
+.pibridge-panel .pibridge-hot { color: var(--pb-alarm); font-weight: 600; }
 
 /* ---- glasnoca i odabir postaje ---- */
 .pibridge-panel .pibridge-volrow {

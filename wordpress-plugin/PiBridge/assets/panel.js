@@ -23,6 +23,7 @@
       <div class="pibridge-side">
         <span id="pibridge-hum">vlaga --</span> ·
         <span id="pibridge-age">očitanje --</span>
+        <span id="pibridge-pitemp" hidden></span>
       </div>
       <div class="pibridge-track" id="pibridge-track">
         <div class="pibridge-window" id="pibridge-window"></div>
@@ -58,6 +59,7 @@
       </div>
       <div class="pibridge-quick" id="pibridge-quick">
         <button type="button" id="pibridge-dingbtn">🔔 Ding dong</button>
+        <button type="button" id="pibridge-alarmbtn" class="pibridge-danger">🚨 Alarm</button>
         <button type="button" id="pibridge-recbtn">⏺ Snimi</button>
       </div>
       <div class="pibridge-recrow" id="pibridge-recrow" hidden>
@@ -172,6 +174,18 @@
     $("pibridge-hum").textContent = r && r.humidity_pct != null ? `vlaga ${r.humidity_pct.toFixed(0)} %` : "vlaga --";
     $("pibridge-age").textContent = fmtAge(c.reading_age_s);
 
+    // Temperatura samog Pija; izvan Pi-ja je null pa se redak sakrije.
+    const sys = s.system || {};
+    const pit = $("pibridge-pitemp");
+    if (sys.cpu_temp_c == null) {
+      pit.hidden = true;
+    } else {
+      pit.hidden = false;
+      pit.textContent = ` · Pi ${sys.cpu_temp_c.toFixed(0)} °C`;
+      pit.className = sys.cpu_temp_c >= (sys.throttle_c ?? 80) ? "pibridge-hot"
+                    : sys.cpu_temp_c >= (sys.warn_c ?? 70) ? "pibridge-warm" : "";
+    }
+
     if (c.thresholds) {
       const on = c.thresholds.on_c, off = c.thresholds.off_c;
       $("pibridge-window").style.left = pos(off) + "%";
@@ -226,27 +240,53 @@
       box.innerHTML = '<p class="pibridge-spark-empty">Još nema dovoljno mjerenja.</p>';
       return;
     }
-    const W = 560, H = 100, P = 8;
+    // Margine umjesto ravnomjernog razmaka: lijevo za °C natpise, dolje za
+    // sate. preserveAspectRatio se makao - rastezanje bi izoblicilo slova.
+    const W = 560, H = 150, ML = 36, MR = 10, MT = 10, MB = 24;
     const ts = rows.map(r => r.ts), tv = rows.map(r => r.temperature_c);
     const t0 = Math.min(...ts), t1 = Math.max(...ts);
-    const lo = Math.min(...tv) - 0.5, hi = Math.max(...tv) + 0.5;
-    const x = t => P + (t - t0) / ((t1 - t0) || 1) * (W - 2 * P);
-    const y = v => H - P - (v - lo) / ((hi - lo) || 1) * (H - 2 * P);
-    const pts = rows.map(r => `${x(r.ts).toFixed(1)},${y(r.temperature_c).toFixed(1)}`).join(" ");
+    const lo = Math.floor(Math.min(...tv) - 0.5);
+    const hi = Math.ceil(Math.max(...tv) + 0.5);
+    const x = t => ML + (t - t0) / ((t1 - t0) || 1) * (W - ML - MR);
+    const y = v => H - MB - (v - lo) / ((hi - lo) || 1) * (H - MT - MB);
+
+    let grid = "", ylab = "";
+    const YT = 4;
+    for (let i = 0; i <= YT; i++) {
+      const v = lo + (hi - lo) * i / YT;
+      const yy = y(v).toFixed(1);
+      grid += `<line x1="${ML}" y1="${yy}" x2="${W - MR}" y2="${yy}" stroke="#e3e9ec" stroke-width="1"></line>`;
+      ylab += `<text x="${ML - 6}" y="${yy}" text-anchor="end" dominant-baseline="middle"
+               font-size="10" fill="#5e7079">${v.toFixed(0)}°</text>`;
+    }
+
+    let xlab = "";
+    const SIX_H = 6 * 3600;
+    for (let t = Math.ceil(t0 / SIX_H) * SIX_H; t <= t1; t += SIX_H) {
+      const xx = x(t).toFixed(1);
+      const sat = new Date(t * 1000).toLocaleTimeString("hr-HR", { hour: "2-digit", minute: "2-digit" });
+      xlab += `<line x1="${xx}" y1="${MT}" x2="${xx}" y2="${H - MB}" stroke="#e3e9ec" stroke-width="1"></line>
+               <text x="${xx}" y="${H - MB + 14}" text-anchor="middle" font-size="10" fill="#5e7079">${sat}</text>`;
+    }
 
     const th = state && state.climate ? state.climate.thresholds : null;
     const bands = th && th.on_c <= hi && th.off_c >= lo
-      ? `<rect x="${P}" y="${y(th.on_c).toFixed(1)}" width="${W - 2 * P}"
+      ? `<rect x="${ML}" y="${y(th.on_c).toFixed(1)}" width="${W - ML - MR}"
           height="${Math.max(0, (y(th.off_c) - y(th.on_c))).toFixed(1)}"
           fill="rgba(232,133,58,.14)"></rect>` : "";
 
-    box.innerHTML = `<svg class="pibridge-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
+    const pts = rows.map(r => `${x(r.ts).toFixed(1)},${y(r.temperature_c).toFixed(1)}`).join(" ");
+
+    box.innerHTML = `<svg class="pibridge-spark" viewBox="0 0 ${W} ${H}"
         role="img" aria-label="Temperatura kroz vrijeme">
-        ${bands}
+        ${grid}${xlab}${bands}
+        <line x1="${ML}" y1="${MT}" x2="${ML}" y2="${H - MB}" stroke="#c9d3d7"></line>
+        <line x1="${ML}" y1="${H - MB}" x2="${W - MR}" y2="${H - MB}" stroke="#c9d3d7"></line>
+        ${ylab}
         <polyline points="${pts}" fill="none" stroke="#2f7fb5" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"></polyline>
       </svg>
-      <div class="pibridge-scale"><span>${lo.toFixed(1)} °C – ${hi.toFixed(1)} °C</span><span>${rows.length} točaka</span></div>`;
+      <div class="pibridge-scale"><span>zadnja 24 h</span><span>${rows.length} mjerenja</span></div>`;
   }
 
   function drawHosts(d) {
@@ -370,6 +410,14 @@
     }));
   });
 
+  // priority 0 = ALARM: preskace red i prekida ono sto trenutno svira.
+  $("pibridge-alarmbtn").addEventListener("click", () => {
+    action(() => call("/announce", {
+      method: "POST",
+      body: JSON.stringify({ file: "alarm.wav", priority: 0 }),
+    }));
+  });
+
   // -- snimanje najave ----------------------------------------------------
   // Isti obrazac kao index.html: MediaRecorder ne zna u WAV, pa se nastavak
   // odredi iz stvarnog tipa snimke (Chrome webm, Firefox ogg, Safari mp4).
@@ -395,6 +443,15 @@
   }
 
   async function startRec() {
+    // navigator.mediaDevices postoji samo u sigurnom kontekstu (HTTPS ili
+    // localhost) - bez ove provjere korisnik dobije golo "reading
+    // 'getUserMedia' of undefined" i ne zna sto mu je ciniti.
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      $("pibridge-saystate").textContent = location.protocol === "https:"
+        ? "Ovaj preglednik ne dopušta pristup mikrofonu."
+        : "Snimanje traži HTTPS — otvori ovu stranicu preko https://, ne http://.";
+      return;
+    }
     const mime = pickRecMime();
     if (mime === null) {
       $("pibridge-saystate").textContent = "Ovaj browser ne podržava snimanje (MediaRecorder).";

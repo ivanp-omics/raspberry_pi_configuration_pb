@@ -39,6 +39,7 @@ from .services.climate import ClimateService
 from .services.inventory import InventoryService
 from .services.music import MusicService
 from .services.telemetry import TelemetryService
+from .system import THROTTLE_C, WARN_C, cpu_temperature_c
 
 log = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).parent / "web"
@@ -134,6 +135,14 @@ class Runtime:
             "listen": {
                 "clip_seconds": self.cfg.listen.clip_seconds,
                 "mime": self.hal.mic.mime,
+            },
+            # Zdravlje uredaja, odvojeno od klime prostorije: Pi u vrucem
+            # spremistu pocinje usporavati oko 80 C, a to se dosad nije vidjelo
+            # nigdje. None izvan Pi-ja (nema sysfs datoteke).
+            "system": {
+                "cpu_temp_c": cpu_temperature_c(),
+                "warn_c": WARN_C,
+                "throttle_c": THROTTLE_C,
             },
         }
 

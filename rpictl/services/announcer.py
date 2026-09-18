@@ -46,6 +46,17 @@ class AnnouncerService:
         )
         self._queue.put_nowait((int(priority), next(self._seq), ann))
         self._bus.publish(EV_ANNOUNCE, {"state": "queued", "id": ann.id, "text": text})
+
+        # Alarm ne ceka. Prioritet ga inace stavlja na celo reda, ali red se
+        # gleda tek kad trenutna najava zavrsi - a tridesetsekundna najava bi
+        # tad drzala alarm zatvorenim. Zato se ono sto svira prekida odmah.
+        if priority is Priority.ALARM and self.current is not None:
+            log.warning("alarm %s prekida najavu %s", ann.id, self.current.id)
+            try:
+                asyncio.get_running_loop().create_task(self._audio.stop())
+            except RuntimeError:
+                # Nema petlje (izravan poziv izvan asyncia) - nema ni sto prekinuti.
+                pass
         return ann
 
     @property

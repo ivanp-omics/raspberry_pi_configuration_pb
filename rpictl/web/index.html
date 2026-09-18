@@ -113,7 +113,9 @@
   .modes button:focus-visible{outline:2px solid var(--signal);outline-offset:-2px}
 
   /* ---- graf ---- */
-  svg.spark{width:100%;height:120px;display:block}
+  /* height:auto - visina slijedi omjer iz viewBoxa. Fiksna visina bi uz
+     ocuvanje omjera (koje sad treba zbog slova na osima) ostavila praznine. */
+  svg.spark{width:100%;height:auto;display:block}
   .sparkempty{color:var(--muted);font-size:13px;padding:28px 0;text-align:center}
 
   /* ---- razglas ---- */
@@ -155,7 +157,11 @@
   .faults button:focus-visible,.quick button:focus-visible,.stations button:focus-visible{
     outline:2px solid var(--signal);outline-offset:2px}
   .quick button:disabled,.stations button:disabled{opacity:.5;cursor:default}
+  .quick button.danger{border-color:var(--alarm);color:var(--alarm);font-weight:600}
+  .quick button.danger:hover{background:var(--alarm);color:#fff}
   .hint{font-size:13px;color:var(--muted);margin:10px 0 0}
+  .side .warm{color:var(--fan);font-weight:600}
+  .side .hot{color:var(--alarm);font-weight:600}
 
   /* ---- glasnoca ---- */
   .volrow{display:flex;align-items:center;gap:10px;margin-top:12px}
@@ -211,6 +217,7 @@
       <div class="side">
         <div id="hum">vlaga --</div>
         <div id="age">očitanje --</div>
+        <div id="pitemp" hidden>Pi --</div>
       </div>
     </div>
 
@@ -250,6 +257,7 @@
     </div>
     <div class="quick" id="quick">
       <button id="dingbtn" type="button">🔔 Ding dong</button>
+      <button id="alarmbtn" class="danger" type="button">🚨 Alarm</button>
       <button id="recbtn" type="button">⏺ Snimi</button>
     </div>
     <div class="recrow" id="recrow" hidden>
@@ -388,6 +396,19 @@ function render(s){
   $("hum").textContent = r && r.humidity_pct != null ? `vlaga ${r.humidity_pct.toFixed(0)} %` : "vlaga --";
   $("age").textContent = fmtAge(c.reading_age_s);
 
+  // Temperatura samog Pija. Izvan Pi-ja je null (nema sysfs datoteke), pa se
+  // redak sakrije umjesto da pise "--".
+  const sys = s.system || {};
+  const pit = $("pitemp");
+  if (sys.cpu_temp_c == null){
+    pit.hidden = true;
+  } else {
+    pit.hidden = false;
+    pit.textContent = `Pi ${sys.cpu_temp_c.toFixed(0)} °C`;
+    pit.className = sys.cpu_temp_c >= (sys.throttle_c ?? 80) ? "hot"
+                  : sys.cpu_temp_c >= (sys.warn_c ?? 70) ? "warm" : "";
+  }
+
   const on = c.thresholds.on_c, off = c.thresholds.off_c;
   $("window").style.left = pos(off) + "%";
   $("window").style.width = (pos(on) - pos(off)) + "%";
@@ -441,27 +462,62 @@ function drawSpark(rows){
     box.innerHTML = '<p class="sparkempty">Još nema dovoljno mjerenja.</p>';
     return;
   }
-  const W = 640, H = 120, P = 8;
+  // Margine umjesto ravnomjernog razmaka: lijevo treba mjesta za °C natpise,
+  // dolje za sate. preserveAspectRatio se vise ne koristi jer bi rastezanje
+  // izoblicilo i slova na osima.
+  const W = 640, H = 150, ML = 38, MR = 10, MT = 10, MB = 24;
   const ts = rows.map(r => r.ts), tv = rows.map(r => r.temperature_c);
   const t0 = Math.min(...ts), t1 = Math.max(...ts);
-  const lo = Math.min(...tv) - 0.5, hi = Math.max(...tv) + 0.5;
-  const x = t => P + (t - t0) / ((t1 - t0) || 1) * (W - 2*P);
-  const y = v => H - P - (v - lo) / ((hi - lo) || 1) * (H - 2*P);
-  const pts = rows.map(r => `${x(r.ts).toFixed(1)},${y(r.temperature_c).toFixed(1)}`).join(" ");
+  // Zaokruzeno na cijele stupnjeve da oznake na osi budu citljive.
+  const lo = Math.floor(Math.min(...tv) - 0.5);
+  const hi = Math.ceil(Math.max(...tv) + 0.5);
+  const x = t => ML + (t - t0) / ((t1 - t0) || 1) * (W - ML - MR);
+  const y = v => H - MB - (v - lo) / ((hi - lo) || 1) * (H - MT - MB);
+
+  // --- Y os: 4 oznake s linijama mreze ---
+  let grid = "", ylab = "";
+  const YT = 4;
+  for (let i = 0; i <= YT; i++){
+    const v = lo + (hi - lo) * i / YT;
+    const yy = y(v).toFixed(1);
+    grid += `<line x1="${ML}" y1="${yy}" x2="${W-MR}" y2="${yy}"
+             stroke="#e3e9ec" stroke-width="1"></line>`;
+    ylab += `<text x="${ML-6}" y="${yy}" text-anchor="end" dominant-baseline="middle"
+             font-size="10" fill="#5e7079">${v.toFixed(0)}°</text>`;
+  }
+
+  // --- X os: oznake svakih 6 h ---
+  let xlab = "";
+  const SIX_H = 6 * 3600;
+  const prvi = Math.ceil(t0 / SIX_H) * SIX_H;
+  for (let t = prvi; t <= t1; t += SIX_H){
+    const xx = x(t).toFixed(1);
+    const sat = new Date(t * 1000).toLocaleTimeString("hr-HR",
+      {hour: "2-digit", minute: "2-digit"});
+    xlab += `<line x1="${xx}" y1="${MT}" x2="${xx}" y2="${H-MB}"
+             stroke="#e3e9ec" stroke-width="1"></line>
+             <text x="${xx}" y="${H-MB+14}" text-anchor="middle"
+             font-size="10" fill="#5e7079">${sat}</text>`;
+  }
 
   const th = state ? state.climate.thresholds : null;
   const bands = th && th.on_c <= hi && th.off_c >= lo
-    ? `<rect x="${P}" y="${y(th.on_c).toFixed(1)}" width="${W-2*P}"
+    ? `<rect x="${ML}" y="${y(th.on_c).toFixed(1)}" width="${W-ML-MR}"
         height="${Math.max(0,(y(th.off_c)-y(th.on_c))).toFixed(1)}"
         fill="rgba(232,133,58,.14)"></rect>` : "";
 
-  box.innerHTML = `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
+  const pts = rows.map(r => `${x(r.ts).toFixed(1)},${y(r.temperature_c).toFixed(1)}`).join(" ");
+
+  box.innerHTML = `<svg class="spark" viewBox="0 0 ${W} ${H}"
       role="img" aria-label="Temperatura kroz vrijeme">
-      ${bands}
+      ${grid}${xlab}${bands}
+      <line x1="${ML}" y1="${MT}" x2="${ML}" y2="${H-MB}" stroke="#c9d3d7"></line>
+      <line x1="${ML}" y1="${H-MB}" x2="${W-MR}" y2="${H-MB}" stroke="#c9d3d7"></line>
+      ${ylab}
       <polyline points="${pts}" fill="none" stroke="#2f7fb5" stroke-width="2"
         stroke-linejoin="round" stroke-linecap="round"></polyline>
     </svg>
-    <div class="scale"><span>${lo.toFixed(1)} °C – ${hi.toFixed(1)} °C</span><span>${rows.length} točaka</span></div>`;
+    <div class="scale"><span>zadnja 24 h</span><span>${rows.length} mjerenja</span></div>`;
 }
 
 function drawHosts(d){
@@ -542,14 +598,19 @@ $("vol").addEventListener("change", async () => {
   }
 });
 
-// ---- preset zvuk ----
-$("dingbtn").addEventListener("click", async () => {
+// ---- preset zvukovi ----
+async function preset(file, priority, opis){
   try {
-    await post("/api/announce", {file:"dingdong.wav"});
+    const body = {file};
+    if (priority != null) body.priority = priority;
+    await post("/api/announce", body);
   } catch (err) {
-    $("saystate").textContent = "Ne mogu pustiti zvono: " + err.message;
+    $("saystate").textContent = `Ne mogu pustiti ${opis}: ` + err.message;
   }
-});
+}
+$("dingbtn").addEventListener("click", () => preset("dingdong.wav", null, "zvono"));
+// priority 0 = ALARM: preskace red i prekida ono sto trenutno svira.
+$("alarmbtn").addEventListener("click", () => preset("alarm.wav", 0, "alarm"));
 
 // ---- snimanje najave ----
 // MediaRecorder ne zna snimati u WAV i svaki browser daje svoj kontejner
@@ -575,6 +636,16 @@ function recUi(on){
 }
 
 async function startRec(){
+  // navigator.mediaDevices postoji samo u sigurnom kontekstu (HTTPS ili
+  // localhost). Preko obicnog http://spremiste:8000 ga preglednik uopce ne
+  // izlozi, pa bez ove provjere korisnik dobije golo "reading 'getUserMedia'
+  // of undefined" i nema pojma sto mu je ciniti.
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    $("saystate").textContent = location.protocol === "https:"
+      ? "Ovaj preglednik ne dopušta pristup mikrofonu."
+      : "Snimanje traži HTTPS — otvori stranicu preko Tailscale adrese (https://…ts.net), ne preko http://.";
+    return;
+  }
   const mime = pickRecMime();
   if (mime === null){
     $("saystate").textContent = "Ovaj browser ne podržava snimanje (MediaRecorder).";
