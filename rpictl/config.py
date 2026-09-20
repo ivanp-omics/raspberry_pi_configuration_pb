@@ -73,6 +73,21 @@ class AudioConfig(BaseModel):
     )
     tts_cmd: list[str] = Field(default_factory=lambda: ["espeak-ng", "-v", "hr"])
     sim_speak_rate_wps: float = 2.5
+    # Dodaje se na player_cmd kad alarm svira u petlji. Izdvojeno da ovisnost
+    # o mpv-u bude vidljiva u konfiguraciji, a ne skrivena u kodu.
+    loop_args: list[str] = Field(default_factory=lambda: ["--loop-file=inf"])
+
+
+class AnnounceConfig(BaseModel):
+    # Gong prije svake najave - klasicna PA praksa: slusatelj zna da dolazi
+    # obavijest prije nego pocne govor. None iskljucuje.
+    chime: str | None = "dingdong.wav"
+
+
+class AlarmConfig(BaseModel):
+    file: str = "alarm.wav"
+    # Alarm koji ostane upaljen gori je od nikakvog, pa ga server sam ugasi.
+    max_seconds: float = Field(default=60.0, ge=1.0, le=600.0)
 
 
 class RadioStation(BaseModel):
@@ -121,7 +136,10 @@ class ListenConfig(BaseModel):
     # Trajanje je fiksno i podesivo ovdje, a ne parametar iz zahtjeva: mikrofon
     # je jedan, pa dugacko snimanje po tudjem zahtjevu blokira i uredaj i
     # jednog radnika na serveru.
-    clip_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    # Gornja granica jednog slusanja. Snimanje je prekidac, ali ga ffmpeg sam
+    # zaustavi nakon ovoliko - da mikrofon ne ostane otvoren jer je netko
+    # zatvorio karticu.
+    max_seconds: float = Field(default=60.0, ge=1.0, le=600.0)
     # plughw:, a ne hw: - "hw" je sirovi uredaj i trazi tocno one parametre
     # koje cip podrzava, pa jeftina USB kartica s mono ulazom odbije ffmpegov
     # zadani stereo ("cannot set channel count to 2"). "plughw" ubacuje ALSA
@@ -154,6 +172,8 @@ class Config(BaseModel):
     sensor: SensorConfig = Field(default_factory=SensorConfig)
     fan: FanConfig = Field(default_factory=FanConfig)
     audio: AudioConfig = Field(default_factory=AudioConfig)
+    announce: AnnounceConfig = Field(default_factory=AnnounceConfig)
+    alarm: AlarmConfig = Field(default_factory=AlarmConfig)
     music: MusicConfig = Field(default_factory=MusicConfig)
     listen: ListenConfig = Field(default_factory=ListenConfig)
     network: NetworkConfig = Field(default_factory=NetworkConfig)

@@ -159,6 +159,10 @@
   .quick button:disabled,.stations button:disabled{opacity:.5;cursor:default}
   .quick button.danger{border-color:var(--alarm);color:var(--alarm);font-weight:600}
   .quick button.danger:hover{background:var(--alarm);color:#fff}
+  /* Upaljeno stanje prekidaca (alarm, slusanje) - pun, ne samo obrub. */
+  .quick button.on{background:var(--alarm);border-color:var(--alarm);color:#fff;font-weight:600}
+  .quick button.on:hover{filter:brightness(.92);background:var(--alarm)}
+  .alarmline{color:var(--alarm);font-weight:500}
   .hint{font-size:13px;color:var(--muted);margin:10px 0 0}
   .side .warm{color:var(--fan);font-weight:600}
   .side .hot{color:var(--alarm);font-weight:600}
@@ -260,6 +264,7 @@
       <button id="alarmbtn" class="danger" type="button">🚨 Alarm</button>
       <button id="recbtn" type="button">⏺ Snimi</button>
     </div>
+    <p class="hint alarmline" id="alarmline" hidden></p>
     <div class="recrow" id="recrow" hidden>
       <span class="recdot"></span>
       <span class="rectime" id="rectime">Snimam… 0:00</span>
@@ -299,10 +304,10 @@
   <section class="panel">
     <h2>Slušanje prostorije</h2>
     <div class="quick">
-      <button id="listenbtn" type="button">🎧 Snimi</button>
+      <button id="listenbtn" type="button">🎧 Slušaj</button>
     </div>
     <div id="listenbox"></div>
-    <p class="hint" id="listenstate">Snimi kratak isječak da čuješ što se tamo događa.</p>
+    <p class="hint" id="listenstate">Uključi da čuješ što se tamo događa.</p>
   </section>
 
   <section class="panel">
@@ -381,6 +386,11 @@ function renderConn(){
 
 const pos = (c) => Math.max(0, Math.min(100, (c - T_MIN) / (T_MAX - T_MIN) * 100));
 
+function fmtSec(s){
+  const n = Math.max(0, Math.round(s || 0));
+  return `${Math.floor(n/60)}:${String(n%60).padStart(2,"0")}`;
+}
+
 function fmtAge(s){
   if (s == null) return "očitanje --";
   if (s < 90) return `očitanje prije ${Math.round(s)} s`;
@@ -425,8 +435,9 @@ function render(s){
     b.setAttribute("aria-pressed", String(b.dataset.mode === c.mode));
 
   const a = s.announcer;
-  $("saystate").textContent = a.playing
-    ? `Svira: ${a.playing}`
+  $("saystate").textContent =
+    a.waiting ? "Najava čeka kraj alarma."
+    : a.playing ? `Svira: ${a.playing}`
     : (a.pending ? `${a.pending} u redu čekanja.` : "Red je prazan.");
 
   const m = s.music;
@@ -444,10 +455,28 @@ function render(s){
 
   drawStations(s);
 
-  // Guard na disabled: status se osvjezava i tijekom snimanja, pa bez njega
-  // natpis "Snimam..." odmah pregazi natrag na "Snimi 10 s".
-  if (s.listen && !$("listenbtn").disabled)
-    $("listenbtn").textContent = `🎧 Snimi ${s.listen.clip_seconds} s`;
+  // ---- alarm ----
+  const al = s.alarm || {};
+  const abtn = $("alarmbtn");
+  abtn.className = al.active ? "on" : "danger";
+  abtn.textContent = al.active ? "■ ZAUSTAVI ALARM" : "🚨 Alarm";
+  const aline = $("alarmline");
+  aline.hidden = !al.active;
+  if (al.active)
+    aline.textContent = `🚨 Alarm svira — automatsko gašenje za ${fmtSec(al.remaining_s)}`;
+
+  // ---- slusanje ----
+  const li = s.listen || {};
+  const lbtn = $("listenbtn");
+  if (!listenBusy){
+    lbtn.className = li.recording ? "on" : "";
+    lbtn.textContent = li.recording ? "■ Zaustavi" : "🎧 Slušaj";
+  }
+  if (li.recording){
+    const preostalo = Math.max(0, (li.max_seconds || 0) - (li.elapsed_s || 0));
+    $("listenstate").textContent =
+      `● Snima ${fmtSec(li.elapsed_s)} · automatski prekid za ${fmtSec(preostalo)}`;
+  }
 
   $("foot").textContent = s.simulate
     ? `simulacija · vrijeme ×${s.sim_speed} · ${c.reads} očitanja, ${c.errors} grešaka, ${c.cycles} ciklusa`
@@ -609,8 +638,19 @@ async function preset(file, priority, opis){
   }
 }
 $("dingbtn").addEventListener("click", () => preset("dingdong.wav", null, "zvono"));
-// priority 0 = ALARM: preskace red i prekida ono sto trenutno svira.
-$("alarmbtn").addEventListener("click", () => preset("alarm.wav", 0, "alarm"));
+
+// ---- alarm (prekidac) ----
+// Alarm nije najava iz reda nego vlastiti servis koji drzi razglas dok svira,
+// pa ima svoju rutu umjesto /api/announce.
+$("alarmbtn").addEventListener("click", async () => {
+  const upaljen = state && state.alarm && state.alarm.active;
+  try {
+    const a = await post("/api/alarm", {action: upaljen ? "stop" : "start"});
+    render(Object.assign({}, state, {alarm: a}));
+  } catch (err) {
+    $("saystate").textContent = "Alarm nije reagirao: " + err.message;
+  }
+});
 
 // ---- snimanje najave ----
 // MediaRecorder ne zna snimati u WAV i svaki browser daje svoj kontejner
@@ -700,33 +740,49 @@ $("recstop").addEventListener("click", () => {
   if (recorder && recorder.state !== "inactive") recorder.stop();
 });
 
-// ---- slusanje prostorije ----
+// ---- slusanje prostorije (prekidac) ----
+// Dvofazno: start otvara sesiju na Piju, stop je zatvara i vraca snimku.
+// Server sam prekine nakon listen.max_seconds, pa stop radi i tad - snimka
+// ceka u meduspremniku dok je netko ne pokupi.
 let listenUrl = null;
-$("listenbtn").addEventListener("click", async () => {
+let listenBusy = false;
+
+async function toggleListen(){
+  if (listenBusy) return;
   const btn = $("listenbtn");
-  const secs = state && state.listen ? state.listen.clip_seconds : 10;
+  const snima = state && state.listen && state.listen.recording;
+  listenBusy = true;
   btn.disabled = true;
-  btn.textContent = "🎙 Snimam…";
-  $("listenstate").textContent = `Snimanje ${secs} s u tijeku…`;
   try {
-    const res = await fetch("/api/listen", {method:"POST", headers:authHeaders()});
-    if (!res.ok) throw new Error((await res.text()) || res.status);
-    const blob = await res.blob();
-    if (listenUrl) URL.revokeObjectURL(listenUrl);   // inace svaka snimka ostaje u memoriji
-    listenUrl = URL.createObjectURL(blob);
-    const audio = document.createElement("audio");
-    audio.controls = true;
-    audio.src = listenUrl;
-    $("listenbox").replaceChildren(audio);
-    $("listenstate").textContent = "Snimljeno " + new Date().toLocaleTimeString("hr-HR");
-    audio.play().catch(() => {});
+    if (!snima){
+      const res = await fetch("/api/listen/start", {method:"POST", headers:authHeaders()});
+      if (!res.ok) throw new Error((await res.text()) || res.status);
+      $("listenstate").textContent = "Snimanje u tijeku…";
+      await refresh();
+    } else {
+      $("listenstate").textContent = "Zatvaram snimku…";
+      const res = await fetch("/api/listen/stop", {method:"POST", headers:authHeaders()});
+      if (!res.ok) throw new Error((await res.text()) || res.status);
+      const blob = await res.blob();
+      if (listenUrl) URL.revokeObjectURL(listenUrl);   // inace svaka snimka ostaje u memoriji
+      listenUrl = URL.createObjectURL(blob);
+      const audio = document.createElement("audio");
+      audio.controls = true;
+      audio.src = listenUrl;
+      $("listenbox").replaceChildren(audio);
+      $("listenstate").textContent = "Snimljeno " + new Date().toLocaleTimeString("hr-HR");
+      audio.play().catch(() => {});
+      await refresh();
+    }
   } catch (err) {
-    $("listenstate").textContent = "Snimanje nije uspjelo: " + err.message;
+    $("listenstate").textContent = "Slušanje nije uspjelo: " + err.message;
+    refresh().catch(() => {});
   } finally {
+    listenBusy = false;
     btn.disabled = false;
-    btn.textContent = `🎧 Snimi ${secs} s`;
   }
-});
+}
+$("listenbtn").addEventListener("click", toggleListen);
 
 async function post(url, body){
   const res = await fetch(url, {
@@ -830,6 +886,15 @@ $("tokeninput").addEventListener("keydown", e => { if (e.key === "Enter") saveTo
 refresh().catch(() => {});
 connect();
 setInterval(() => refresh().catch(() => {}), 15000);
+
+// Dok alarm ili slusanje traju, odbrojavanje mora teci - 15 s je predugo da
+// bi brojka bila korisna. Poll se sam gasi cim oboje stane.
+setInterval(() => {
+  if (!state) return;
+  const traje = (state.alarm && state.alarm.active)
+             || (state.listen && state.listen.recording);
+  if (traje) refresh().catch(() => {});
+}, 1000);
 </script>
 </body>
 </html>

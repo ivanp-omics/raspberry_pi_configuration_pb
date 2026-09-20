@@ -22,15 +22,27 @@ log = logging.getLogger(__name__)
 class AnnouncerService:
     name = "announcer"
 
-    def __init__(self, clock: Clock, bus: Bus, audio: AudioPlayer) -> None:
+    def __init__(
+        self,
+        clock: Clock,
+        bus: Bus,
+        audio: AudioPlayer,
+        chime: str | None = None,
+        gate: asyncio.Event | None = None,
+    ) -> None:
         self._clock = clock
         self._bus = bus
         self._audio = audio
+        self._chime = chime
+        # Postavljen = razglas je slobodan. Alarm ga spusti dok svira, pa
+        # najave cekaju umjesto da se bore za zvucni uredaj.
+        self._gate = gate
         # (prioritet, redni_broj) -> stabilan FIFO unutar istog prioriteta
         self._queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
         self._seq = itertools.count()
         self._ids = itertools.count(1)
         self.current: Announcement | None = None
+        self.blocked = False
         self.done_count = 0
 
     def enqueue(
@@ -63,13 +75,40 @@ class AnnouncerService:
     def pending(self) -> int:
         return self._queue.qsize()
 
+    async def _cekaj_vrata(self) -> None:
+        """Ceka da razglas bude slobodan (alarm ga drzi dok svira)."""
+        if self._gate is None or self._gate.is_set():
+            return
+        # Bez ove oznake snapshot bi tvrdio da najava "svira" dok zapravo
+        # stoji pred vratima - sucelje bi pisalo "Svira: ..." a nista se ne cuje.
+        self.blocked = True
+        try:
+            await self._gate.wait()
+        finally:
+            self.blocked = False
+
     async def run(self) -> None:
         while True:
             _, _, ann = await self._queue.get()
+            await self._cekaj_vrata()
             self.current = ann
             self._bus.publish(EV_ANNOUNCE, {"state": "playing", "id": ann.id,
                                             "text": ann.text, "path": ann.path})
             try:
+                # Gong prije sadrzaja. Ne ide ispred samog gonga (da ne bude
+                # dvostruk) ni ispred alarma (alarm ne ceka ceremoniju).
+                if (
+                    self._chime
+                    and ann.path != self._chime
+                    and ann.priority is not Priority.ALARM
+                ):
+                    await self._audio.play_file(Path(self._chime))
+
+                # Opet vrata, ne samo na vrhu petlje: ako je alarm presjekao
+                # gong, sadrzaj bi inace krenuo PREKO alarma i tukao se s njim
+                # za zvucni uredaj. Ovako pricekamo da alarm zavrsi.
+                await self._cekaj_vrata()
+
                 if ann.path:
                     await self._audio.play_file(Path(ann.path))
                 else:
@@ -83,8 +122,12 @@ class AnnouncerService:
                 self._queue.task_done()
 
     def snapshot(self) -> dict:
+        svira = self.current.text or self.current.path if self.current else None
         return {
-            "playing": self.current.text or self.current.path if self.current else None,
+            # Dok ceka pred vratima najava nije "playing" - inace sucelje pise
+            # da nesto svira, a razglas je zauzet alarmom.
+            "playing": None if self.blocked else svira,
+            "waiting": self.blocked,
             "pending": self.pending,
             "done": self.done_count,
         }

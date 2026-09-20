@@ -34,6 +34,7 @@ from .config import Config, load_config
 from .hal.factory import build_hal
 from .media import MAX_BYTES, MediaError, MediaLibrary
 from .models import FanMode, MicRecordError, Priority
+from .services.alarm import AlarmService
 from .services.announcer import AnnouncerService
 from .services.climate import ClimateService
 from .services.inventory import InventoryService
@@ -68,6 +69,10 @@ class VolumeRequest(BaseModel):
     volume: int = Field(ge=0, le=100)
 
 
+class AlarmRequest(BaseModel):
+    action: Literal["start", "stop"]
+
+
 class FaultRequest(BaseModel):
     freeze: bool | None = None
     error: bool | None = None
@@ -91,7 +96,12 @@ class Runtime:
         self.climate = ClimateService(
             cfg.climate, self.clock, self.bus, self.hal.sensor, self.hal.fan
         )
-        self.announcer = AnnouncerService(self.clock, self.bus, self.hal.audio)
+        # Alarm prije najava: najave cekaju na njegovom `idle` dogadaju.
+        self.alarm = AlarmService(cfg.alarm, self.clock, self.bus, self.hal.audio)
+        self.announcer = AnnouncerService(
+            self.clock, self.bus, self.hal.audio,
+            chime=cfg.announce.chime, gate=self.alarm.idle,
+        )
         self.music = MusicService(self.clock, self.bus, self.hal.music)
         self.inventory = InventoryService(
             cfg.network, self.clock, self.bus, self.hal.scanner
@@ -112,6 +122,9 @@ class Runtime:
         for t in self._tasks:
             with contextlib.suppress(asyncio.CancelledError):
                 await t
+        # Prije HAL-a: alarm mora ugasiti svoj proces i tajmer, inace ostane
+        # svirati i nakon sto servis stane.
+        await self.alarm.close()
         await self.telemetry.close()
         await self.hal.close()
         log.info("zaustavljeno")
@@ -123,6 +136,7 @@ class Runtime:
             "now": self.clock.now(),
             "climate": self.climate.snapshot(),
             "announcer": self.announcer.snapshot(),
+            "alarm": self.alarm.snapshot(),
             "music": self.music.snapshot(),
             "network": {
                 k: v for k, v in self.inventory.snapshot().items() if k != "hosts"
@@ -133,8 +147,10 @@ class Runtime:
             # mjesta (index.html i WordPress plugin) i neizbjezno bi se razisao.
             "stations": [s.model_dump() for s in self.cfg.music.stations],
             "listen": {
-                "clip_seconds": self.cfg.listen.clip_seconds,
+                "max_seconds": self.cfg.listen.max_seconds,
                 "mime": self.hal.mic.mime,
+                "recording": self.hal.mic.recording,
+                "elapsed_s": round(self.hal.mic.elapsed_s, 1),
             },
             # Zdravlje uredaja, odvojeno od klime prostorije: Pi u vrucem
             # spremistu pocinje usporavati oko 80 C, a to se dosad nije vidjelo
@@ -267,22 +283,48 @@ def create_app(config_path: str = "config.yaml") -> FastAPI:
         await rt().music.set_volume(req.volume)
         return rt().music.snapshot()
 
+    # -- alarm --------------------------------------------------------------
+
+    @app.post("/api/alarm", dependencies=[Depends(require_token)])
+    async def alarm(req: AlarmRequest) -> dict:
+        if req.action == "start":
+            await rt().alarm.start()
+        else:
+            await rt().alarm.stop()
+        return rt().alarm.snapshot()
+
     # -- slusanje prostorije ------------------------------------------------
 
-    # Mikrofon je jedan fizicki uredaj: dva paralelna snimanja bi se borila za
-    # njega i oba bi pukla. Lock pretvara to u jasan 409 umjesto zbunjujuce
+    # Mikrofon je jedan fizicki uredaj: dvije paralelne sesije bi se borile za
+    # njega i obje bi pukle. Lock pretvara to u jasan 409 umjesto zbunjujuce
     # ffmpeg greske.
     listen_lock = asyncio.Lock()
 
-    @app.post("/api/listen", dependencies=[Depends(require_token)])
-    async def listen() -> Response:
+    @app.post("/api/listen/start", dependencies=[Depends(require_token)])
+    async def listen_start() -> dict:
         if listen_lock.locked():
-            raise HTTPException(status_code=409, detail="snimanje je vec u tijeku")
-        async with listen_lock:
-            try:
-                data = await rt().hal.mic.record(rt().cfg.listen.clip_seconds)
-            except MicRecordError as exc:
-                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise HTTPException(status_code=409, detail="slusanje je vec u tijeku")
+        await listen_lock.acquire()
+        try:
+            await rt().hal.mic.start(rt().cfg.listen.max_seconds)
+        except MicRecordError as exc:
+            listen_lock.release()
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except BaseException:
+            listen_lock.release()
+            raise
+        return {"recording": True, "max_seconds": rt().cfg.listen.max_seconds}
+
+    @app.post("/api/listen/stop", dependencies=[Depends(require_token)])
+    async def listen_stop() -> Response:
+        if not listen_lock.locked():
+            raise HTTPException(status_code=409, detail="slusanje nije pokrenuto")
+        try:
+            data = await rt().hal.mic.stop()
+        except MicRecordError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        finally:
+            listen_lock.release()
         return Response(content=data, media_type=rt().hal.mic.mime)
 
     # -- datoteke za razglas i glazbu ---------------------------------------

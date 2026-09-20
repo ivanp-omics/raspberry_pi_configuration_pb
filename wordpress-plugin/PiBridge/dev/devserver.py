@@ -60,6 +60,7 @@ def load_piconf() -> dict | None:
 _mock = {
     "mode": "auto", "fan_on": True, "music": "stopped", "track": None,
     "pending": 0, "playing": None, "volume": 40,
+    "alarm_until": None, "listen_since": None,
 }
 
 
@@ -96,7 +97,19 @@ def mock_status() -> dict:
             {"name": "Beat Blender", "url": "https://somafm.com/beatblender.pls"},
             {"name": "PopTron", "url": "https://somafm.com/poptron.pls"},
         ],
-        "listen": {"clip_seconds": 10.0, "mime": "audio/wav"},
+        "alarm": {
+            "active": _mock["alarm_until"] is not None,
+            "remaining_s": (max(0.0, _mock["alarm_until"] - time.time())
+                            if _mock["alarm_until"] else None),
+            "max_seconds": 60.0,
+        },
+        "listen": {
+            "max_seconds": 60.0,
+            "mime": "audio/wav",
+            "recording": _mock["listen_since"] is not None,
+            "elapsed_s": (round(time.time() - _mock["listen_since"], 1)
+                          if _mock["listen_since"] else 0.0),
+        },
         "system": {"cpu_temp_c": 52.4, "warn_c": 70.0, "throttle_c": 80.0},
     }
 
@@ -259,6 +272,42 @@ class Handler(BaseHTTPRequestHandler):
 
         # Ove dvije rute nose sirov audio / nemaju tijelo, pa se ne parsiraju
         # kao JSON - moraju prije json.loads() ispod.
+        if path == "/dev-api/alarm":
+            if cfg:
+                status, body = pi_request(cfg, "POST", "/api/alarm", json.loads(raw or b"{}"))
+                return self._json(status, body)
+            akcija = json.loads(raw or b"{}").get("action")
+            _mock["alarm_until"] = time.time() + 60.0 if akcija == "start" else None
+            return self._json(200, mock_status()["alarm"])
+
+        if path == "/dev-api/listen-start":
+            if cfg:
+                status, body = pi_request(cfg, "POST", "/api/listen/start")
+                return self._json(status, body)
+            if _mock["listen_since"] is not None:
+                return self._json(409, {"message": "slusanje je vec u tijeku"})
+            _mock["listen_since"] = time.time()
+            return self._json(200, {"recording": True, "max_seconds": 60.0})
+
+        if path == "/dev-api/listen-stop":
+            if cfg:
+                status, body = pi_request(cfg, "POST", "/api/listen/stop", timeout=30.0)
+                if status != 200:
+                    return self._json(status, body)
+                return self._json(200, {
+                    "mime": "audio/ogg", "bytes": len(body),
+                    "audio_base64": base64.b64encode(body).decode("ascii"),
+                })
+            if _mock["listen_since"] is None:
+                return self._json(409, {"message": "slusanje nije pokrenuto"})
+            trajanje = max(0.5, time.time() - _mock["listen_since"])
+            _mock["listen_since"] = None
+            clip = mock_clip_wav(min(trajanje, 10.0))
+            return self._json(200, {
+                "mime": "audio/wav", "bytes": len(clip),
+                "audio_base64": base64.b64encode(clip).decode("ascii"),
+            })
+
         if path == "/dev-api/listen":
             if cfg:
                 # Timeout mora nadzivjeti trajanje snimke (Pi drzi vezu dok snima).

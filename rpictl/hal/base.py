@@ -47,6 +47,19 @@ class AudioPlayer(Protocol):
 
     async def stop(self) -> None: ...
 
+    @property
+    def looping(self) -> bool: ...
+
+    async def start_loop(self, path: Path) -> None:
+        """Vrti datoteku u petlji dok je stop_loop() ne prekine (alarm).
+
+        Odvojeno od play_file: ono ceka kraj reprodukcije, a alarm nema kraj.
+        Drzi vlastiti proces, pa jednokratna najava i alarm ne dijele isti.
+        """
+        ...
+
+    async def stop_loop(self) -> None: ...
+
     async def close(self) -> None: ...
 
 
@@ -89,8 +102,9 @@ class MusicPlayer(Protocol):
 class MicRecorder(Protocol):
     """Kratki isjecak s mikrofona - "sto se sad dogada u prostoriji".
 
-    Vraca gotove bajtove audio datoteke, ne tok: trajanje je unaprijed
-    odredeno konfiguracijom, pa pozivatelj ne mora upravljati sesijom.
+    Sesija u dva koraka (start/stop), a ne jedan blokirajuci poziv: slusanje
+    je prekidac, korisnik ga gasi kad zeli. Gornja granica postoji svejedno,
+    da mikrofon ne ostane otvoren ako netko zatvori karticu.
     """
 
     @property
@@ -98,7 +112,18 @@ class MicRecorder(Protocol):
         """Tip snimke koju ovaj snimac vraca - lazni daje WAV, pravi Opus/Ogg."""
         ...
 
-    async def record(self, seconds: float) -> bytes: ...
+    @property
+    def recording(self) -> bool: ...
+
+    @property
+    def elapsed_s(self) -> float: ...
+
+    async def start(self, max_seconds: float) -> None: ...
+
+    async def stop(self) -> bytes:
+        """Zaustavi i vrati snimljeno. Radi i ako je granica vec istekla -
+        snimka se cuva dok je netko ne pokupi."""
+        ...
 
     async def close(self) -> None: ...
 

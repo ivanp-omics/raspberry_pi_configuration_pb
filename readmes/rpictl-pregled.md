@@ -236,6 +236,32 @@ jedina ruta koja živo stanje daje svakome tko dosegne port. Bez
 postavljenog tokena (default) ponašanje je identično kao prije — Tailscale
 mreža je jedina brava. Vidi "Daljinski pristup preko WordPressa" niže.
 
+## Što se sprema i gdje
+
+Ovo se ne vidi iz koda na prvi pogled, a bitno je znati — i zbog prostora na
+kartici i zbog privatnosti.
+
+| Što | Gdje | Koliko dugo |
+|---|---|---|
+| Očitanja senzora (temp, vlaga, tlak, plin) | `data/rpictl.sqlite`, tablica `readings` | **30 dana** (`telemetry.retention_days`), čisti se svaki sat |
+| Događaji ventilatora (paljenje/gašenje + razlog) | isti SQLite, tablica `fan_events` | 30 dana |
+| Snimka najave (⏺ Snimi u sučelju) | `media/snimka-razglas.<ext>` — **jedna datoteka, prepisuje se** | do sljedeće snimke |
+| **Isječak prostorije** (🎧 Slušaj) | **nigdje** — ffmpeg piše u cijev, ide ravno u odgovor | ne postoji nakon zatvaranja stranice |
+| Uploadane datoteke (glazba, najave) | `media/`, `media/music/` | dok se ručno ne obrišu |
+| Preset zvukovi | `media/dingdong.wav`, `media/alarm.wav` | trajno, dolaze iz gita |
+| Popis uređaja na mreži | **samo u memoriji** | **gubi se pri svakom restartu servisa** |
+| Logovi | journald (`journalctl -u rpictl`) | po systemd postavkama |
+| API token | `config.local.yaml`, otvoreni tekst | trajno |
+
+Dvije odluke vrijedne objašnjenja:
+
+**Slušanje prostorije se namjerno ne sprema.** Snimka prostorije je osjetljiv
+zapis; da se sprema, trebala bi i politika brisanja i netko tko na nju pazi.
+Ovako ne postoji ništa što bi kasnije trebalo čuvati ili objašnjavati.
+
+**Snimka najave koristi jedno, rotirajuće ime.** Datoteke koje se nigdje u
+sučelju ne vide tiho bi punile karticu — ovako ih uvijek ima točno jedna.
+
 ## Prelazak na Raspberry Pi
 
 1. `simulate: false` i `sim_speed: 1.0` u `config.yaml`

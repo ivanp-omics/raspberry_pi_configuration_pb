@@ -56,6 +56,13 @@ audio:
   tts_cmd: ["espeak-ng", "-v", "hr", "-s", "150"]
   sim_speak_rate_wps: 2.5   # koliko rijeci u sekundi "govori" lazni player
 
+announce:
+  chime: "dingdong.wav"   # gong prije svake najave; null iskljucuje
+
+alarm:
+  file: "alarm.wav"
+  max_seconds: 60         # server sam gasi alarm nakon ovoliko
+
 music:
   media_dir: "media/music"
   player_cmd: ["mpv", "--no-video", "--idle=yes", "--really-quiet"]
@@ -76,7 +83,7 @@ music:
       url: "http://stream.radioparadise.com/mp3-192"
 
 listen:
-  clip_seconds: 10        # trajanje isjecka "slusaj prostoriju" (1-60)
+  max_seconds: 60        # gornja granica jednog slusanja (prekidac ga gasi ranije)
   device: "plughw:0"      # ista USB kartica kao razglas, samo ulaz (mono -> plughw)
 
 network:

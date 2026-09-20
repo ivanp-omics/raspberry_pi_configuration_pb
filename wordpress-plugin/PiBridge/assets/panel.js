@@ -67,6 +67,7 @@
         <span class="pibridge-rectime" id="pibridge-rectime">Snimam… 0:00</span>
         <button type="button" id="pibridge-recstop">■ Stani</button>
       </div>
+      <p class="pibridge-alarmline" id="pibridge-alarmline" hidden></p>
       <p class="pibridge-reason" id="pibridge-saystate">Red je prazan.</p>
     </div>
 
@@ -159,6 +160,11 @@
 
   // -- prikaz ------------------------------------------------------------
 
+  function fmtSec(s) {
+    const n = Math.max(0, Math.round(s || 0));
+    return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
+  }
+
   function fmtAge(s) {
     if (s == null) return "očitanje --";
     if (s < 90) return `očitanje prije ${Math.round(s)} s`;
@@ -205,8 +211,9 @@
     }
 
     const a = s.announcer || {};
-    $("pibridge-saystate").textContent = a.playing
-      ? `Svira: ${a.playing}`
+    $("pibridge-saystate").textContent =
+      a.waiting ? "Najava čeka kraj alarma."
+      : a.playing ? `Svira: ${a.playing}`
       : (a.pending ? `${a.pending} u redu čekanja.` : "Red je prazan.");
 
     const m = s.music || {};
@@ -224,10 +231,28 @@
 
     drawStations(s);
 
-    // Guard na disabled: polling se vrti i tijekom snimanja, pa bi bez njega
-    // natpis "Snimam..." odmah bio pregazen natrag na "Snimi 10 s".
-    if (s.listen && !$("pibridge-listenbtn").disabled) {
-      $("pibridge-listenbtn").textContent = `🎧 Snimi ${s.listen.clip_seconds} s`;
+    // ---- alarm ----
+    const al = s.alarm || {};
+    const abtn = $("pibridge-alarmbtn");
+    abtn.className = al.active ? "pibridge-on" : "pibridge-danger";
+    abtn.textContent = al.active ? "■ ZAUSTAVI ALARM" : "🚨 Alarm";
+    const aline = $("pibridge-alarmline");
+    aline.hidden = !al.active;
+    if (al.active) {
+      aline.textContent = `🚨 Alarm svira — automatsko gašenje za ${fmtSec(al.remaining_s)}`;
+    }
+
+    // ---- slusanje ----
+    const li = s.listen || {};
+    const lbtn = $("pibridge-listenbtn");
+    if (!listenBusy) {
+      lbtn.className = li.recording ? "pibridge-on" : "";
+      lbtn.textContent = li.recording ? "■ Zaustavi" : "🎧 Slušaj";
+    }
+    if (li.recording) {
+      const preostalo = Math.max(0, (li.max_seconds || 0) - (li.elapsed_s || 0));
+      $("pibridge-listenstate").textContent =
+        `● Snima ${fmtSec(li.elapsed_s)} · automatski prekid za ${fmtSec(preostalo)}`;
     }
 
     $("pibridge-error").hidden = true;
@@ -410,11 +435,13 @@
     }));
   });
 
-  // priority 0 = ALARM: preskace red i prekida ono sto trenutno svira.
+  // Alarm nije najava iz reda nego vlastiti servis koji drzi razglas dok
+  // svira - zato svoja ruta, a ne /announce.
   $("pibridge-alarmbtn").addEventListener("click", () => {
-    action(() => call("/announce", {
+    const upaljen = state && state.alarm && state.alarm.active;
+    action(() => call("/alarm", {
       method: "POST",
-      body: JSON.stringify({ file: "alarm.wav", priority: 0 }),
+      body: JSON.stringify({ action: upaljen ? "stop" : "start" }),
     }));
   });
 
@@ -515,30 +542,43 @@
   // Audio dolazi kao base64 u JSON-u (vidi pibridge_audio_request u PHP-u),
   // pa se ovdje pretvara natrag u Blob za <audio> element.
 
+  // Prekidac: start otvara sesiju na Piju, stop je zatvara i vraca snimku
+  // (kao base64 u JSON-u, vidi pibridge_audio_request u PHP-u).
   let listenUrl = null;
+  let listenBusy = false;
+
   $("pibridge-listenbtn").addEventListener("click", async () => {
+    if (listenBusy) return;
     const btn = $("pibridge-listenbtn");
-    const secs = (state && state.listen) ? state.listen.clip_seconds : 10;
+    const snima = state && state.listen && state.listen.recording;
+    listenBusy = true;
     btn.disabled = true;
-    btn.textContent = "🎙 Snimam…";
-    $("pibridge-listenstate").textContent = `Snimanje ${secs} s u tijeku…`;
     try {
-      const out = await call("/listen", { method: "POST" });
-      const bin = Uint8Array.from(atob(out.audio_base64), ch => ch.charCodeAt(0));
-      if (listenUrl) URL.revokeObjectURL(listenUrl);
-      listenUrl = URL.createObjectURL(new Blob([bin], { type: out.mime }));
-      const audio = document.createElement("audio");
-      audio.controls = true;
-      audio.src = listenUrl;
-      $("pibridge-listenbox").replaceChildren(audio);
-      $("pibridge-listenstate").textContent =
-        "Snimljeno " + new Date().toLocaleTimeString("hr-HR");
-      audio.play().catch(() => {});
+      if (!snima) {
+        await call("/listen-start", { method: "POST" });
+        $("pibridge-listenstate").textContent = "Snimanje u tijeku…";
+        await refresh();
+      } else {
+        $("pibridge-listenstate").textContent = "Zatvaram snimku…";
+        const out = await call("/listen-stop", { method: "POST" });
+        const bin = Uint8Array.from(atob(out.audio_base64), ch => ch.charCodeAt(0));
+        if (listenUrl) URL.revokeObjectURL(listenUrl);
+        listenUrl = URL.createObjectURL(new Blob([bin], { type: out.mime }));
+        const audio = document.createElement("audio");
+        audio.controls = true;
+        audio.src = listenUrl;
+        $("pibridge-listenbox").replaceChildren(audio);
+        $("pibridge-listenstate").textContent =
+          "Snimljeno " + new Date().toLocaleTimeString("hr-HR");
+        audio.play().catch(() => {});
+        await refresh();
+      }
     } catch (err) {
-      $("pibridge-listenstate").textContent = "Snimanje nije uspjelo: " + err.message;
+      $("pibridge-listenstate").textContent = "Slušanje nije uspjelo: " + err.message;
+      refresh().catch(() => {});
     } finally {
+      listenBusy = false;
       btn.disabled = false;
-      btn.textContent = `🎧 Snimi ${secs} s`;
     }
   });
 
@@ -566,10 +606,18 @@
     }
   }
 
+  // Dok alarm ili slusanje traju, odbrojavanje mora teci - 5 s je predugo da
+  // bi brojka bila korisna. 2 s, ne 1 s kao na index.html: svaki poziv ovdje
+  // drzi PHP radnika, a sesija je ionako omedena na 60 s.
+  const BUSY_DELAY = 2000;
+
   async function tick() {
     if (document.hidden) { schedule(MIN_DELAY); return; }
     await refresh().catch(() => {});
-    schedule();
+    const traje = state && (
+      (state.alarm && state.alarm.active) || (state.listen && state.listen.recording)
+    );
+    schedule(traje ? BUSY_DELAY : undefined);
   }
 
   // Svaki zahtjev zauzme jednog PHP radnika na hostingu dok traje, pa se pri

@@ -281,11 +281,25 @@ add_action('rest_api_init', function () {
         'permission_callback' => 'pibridge_can_operate',
     ]);
 
-    // Isjecak prostorije. Timeout mora biti duzi od trajanja snimke (Pi drzi
-    // vezu otvorenu dok snima), za razliku od ostalih ruta gdje je 5 s dosta.
-    register_rest_route(PIBRIDGE_NS, '/listen', [
+    register_rest_route(PIBRIDGE_NS, '/alarm', [
         'methods' => 'POST',
-        'callback' => fn() => pibridge_audio_request('POST', '/api/listen', null, 'application/octet-stream', 45),
+        'callback' => fn(WP_REST_Request $req) => pibridge_request(
+            'POST', '/api/alarm', ['action' => $req->get_param('action')]
+        ),
+        'permission_callback' => 'pibridge_can_operate',
+    ]);
+
+    // Slusanje je prekidac: start otvara sesiju na Piju, stop je zatvara i
+    // vraca snimku. Oba poziva su kratka - Pi ne drzi vezu dok snima.
+    register_rest_route(PIBRIDGE_NS, '/listen-start', [
+        'methods' => 'POST',
+        'callback' => fn() => pibridge_request('POST', '/api/listen/start'),
+        'permission_callback' => 'pibridge_can_operate',
+    ]);
+
+    register_rest_route(PIBRIDGE_NS, '/listen-stop', [
+        'methods' => 'POST',
+        'callback' => fn() => pibridge_audio_request('POST', '/api/listen/stop', null, 'application/octet-stream', 30),
         'permission_callback' => 'pibridge_can_operate',
     ]);
 });

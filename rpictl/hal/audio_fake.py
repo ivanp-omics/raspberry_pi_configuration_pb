@@ -22,8 +22,22 @@ class FakeAudioPlayer:
         self._rate = speak_rate_wps
         self._task: asyncio.Task | None = None
         self._stopped = False
+        self._looping: str | None = None
         self.now_playing: str | None = None
         self.play_count = 0
+
+    @property
+    def looping(self) -> bool:
+        return self._looping is not None
+
+    async def start_loop(self, path: Path) -> None:
+        self._looping = Path(path).name
+        log.info("razglas: petlja %s", self._looping)
+
+    async def stop_loop(self) -> None:
+        if self._looping:
+            log.info("razglas: petlja %s zaustavljena", self._looping)
+        self._looping = None
 
     async def _busy(self, label: str, seconds: float) -> None:
         self.now_playing = label
@@ -63,4 +77,5 @@ class FakeAudioPlayer:
         self.now_playing = None
 
     async def close(self) -> None:
+        await self.stop_loop()
         await self.stop()

@@ -156,6 +156,17 @@
 .pibridge-panel .pibridge-quick button.pibridge-danger:hover:not(:disabled) {
   background: var(--pb-alarm); color: #fff;
 }
+/* Upaljeno stanje prekidaca (alarm, slusanje) - pun, ne samo obrub. */
+.pibridge-panel .pibridge-quick button.pibridge-on {
+  background: var(--pb-alarm); border-color: var(--pb-alarm);
+  color: #fff; font-weight: 600;
+}
+.pibridge-panel .pibridge-quick button.pibridge-on:hover:not(:disabled) {
+  filter: brightness(.92); background: var(--pb-alarm);
+}
+.pibridge-panel .pibridge-alarmline {
+  color: var(--pb-alarm); font-weight: 500; margin: 8px 0 0; font-size: 13px;
+}
 .pibridge-panel .pibridge-warm { color: var(--pb-fan); font-weight: 600; }
 .pibridge-panel .pibridge-hot { color: var(--pb-alarm); font-weight: 600; }
 
