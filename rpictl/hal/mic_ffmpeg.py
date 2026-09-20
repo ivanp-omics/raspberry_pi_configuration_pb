@@ -58,15 +58,18 @@ class FfmpegMicRecorder:
             "pipe:1",
         ]
 
-    async def _pump(self) -> None:
+    async def _pump(self, stdout: asyncio.StreamReader) -> None:
         """Prazni ffmpegov izlaz u memoriju dok traje snimanje.
 
         Obavezno: cijev prima oko 64 kB, sto je pri 24 kbps nekih 20 sekundi -
         nakon toga bi ffmpeg blokirao na pisanju i snimka bi tiho stala.
+
+        Tok se prima kao argument, a NE cita iz self._proc u svakoj iteraciji:
+        stop() ocisti self._proc prije nego pricek ovaj zadatak, pa bi sljedeci
+        prolaz petlje pao na None.stdout i srusio cijeli zahtjev.
         """
-        assert self._proc is not None and self._proc.stdout is not None
         while True:
-            chunk = await self._proc.stdout.read(8192)
+            chunk = await stdout.read(8192)
             if not chunk:
                 return
             self._buf.extend(chunk)
@@ -92,8 +95,10 @@ class FfmpegMicRecorder:
                 f"nema naredbe {cmd[0]} - instaliraj ffmpeg (sudo apt install ffmpeg)"
             ) from exc
 
+        if self._proc.stdout is None:          # ne bi se smjelo dogoditi uz PIPE
+            raise MicRecordError("ffmpeg nije otvorio izlazni tok")
         self._started_at = time.monotonic()
-        self._drain = asyncio.create_task(self._pump())
+        self._drain = asyncio.create_task(self._pump(self._proc.stdout))
 
     async def stop(self) -> bytes:
         proc, drain = self._proc, self._drain
@@ -116,6 +121,10 @@ class FfmpegMicRecorder:
                 await asyncio.wait_for(drain, timeout=5.0)
             except asyncio.TimeoutError:
                 drain.cancel()
+            except Exception:
+                # Ono sto je do sada uhvaceno je i dalje upotrebljivo - ne
+                # gubimo snimku zato sto je praznjenje zapelo na kraju.
+                log.exception("greska pri praznjenju ffmpeg izlaza")
         try:
             await asyncio.wait_for(proc.wait(), timeout=5.0)
         except asyncio.TimeoutError:
